@@ -77,7 +77,7 @@ export class AppScheduler {
   /**
    * Executes a cycle with overlap prevention lock and active window verification
    */
-  public async executeProtectedCycle(triggerSource: string): Promise<ExportCycleSummary | null> {
+  public async executeProtectedCycle(triggerSource: string, overrideOptions?: { recipients?: string[]; reportType?: string }): Promise<ExportCycleSummary | null> {
     if (this.isShuttingDown) {
       logger.info(`Skipping cycle (${triggerSource}) due to pending shutdown.`);
       return null;
@@ -97,7 +97,7 @@ export class AppScheduler {
 
     try {
       logger.info(`Executing export cycle triggered by: ${triggerSource}`);
-      const summary = await this.orchestrator.runCycle();
+      const summary = await this.orchestrator.runCycle(overrideOptions);
       this.lastSummary = summary;
       return summary;
     } catch (err: any) {
@@ -107,13 +107,13 @@ export class AppScheduler {
   }
 
   /**
-   * Manual trigger from Web UI ("Send Now")
+   * Manual trigger from Web UI ("Send Now" with optional custom recipient and report type)
    */
-  public async triggerManualRun(): Promise<ExportCycleSummary> {
+  public async triggerManualRun(overrideOptions?: { recipients?: string[]; reportType?: string }): Promise<ExportCycleSummary> {
     if (this.orchestrator.getIsRunning()) {
       throw new Error('An export cycle is currently running. Please wait for it to complete.');
     }
-    const summary = await this.executeProtectedCycle('Manual Web UI Trigger');
+    const summary = await this.executeProtectedCycle('Manual Web UI Trigger', overrideOptions);
     if (!summary) {
       throw new Error('Cycle did not complete (check logs or active window).');
     }

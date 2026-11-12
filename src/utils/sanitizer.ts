@@ -53,4 +53,9 @@ export function buildExportFileName(companyName: string, date: Date = new Date()
   const MM = pad(date.getMonth() + 1);
   const dd = pad(date.getDate());
   const HH = pad(date.getHours());
-  const mm = pad(date.
+  const mm = pad(date.getMinutes());
+
+  const timestamp = `${yyyy}${MM}${dd}_${HH}${mm}`;
+  return `${sanitizedCompany}_${cleanReportName}_${timestamp}.xlsx`;
+}
+

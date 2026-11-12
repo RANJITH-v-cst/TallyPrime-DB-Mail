@@ -68,7 +68,18 @@
       width: 100%; padding: 8px 12px; border: 1px solid var(--border); border-radius: 6px; font-size: 13px; outline: none;
     }
     .form-group input:focus, .form-group select:focus, .form-group textarea:focus { border-color: var(--primary); }
+    .form-group textarea { resize: vertical; min-height: 52px; line-height: 1.4; }
     .hint { font-size: 11px; color: var(--text-muted); margin-top: 4px; }
+
+    .chips-container { display: flex; flex-wrap: wrap; gap: 6px; margin-top: 6px; }
+    .email-chip {
+      display: inline-flex; align-items: center; gap: 6px; padding: 3px 8px; border-radius: 12px; font-size: 11px; font-weight: 500;
+    }
+    .email-chip.chip-valid { background: #eff6ff; border: 1px solid #bfdbfe; color: #1e40af; }
+    .email-chip.chip-invalid { background: #fef2f2; border: 1px solid #fecaca; color: #b91c1c; }
+    .email-chip.chip-placeholder { background: #fffbeb; border: 1px solid #fde68a; color: #b45309; }
+    .chip-close { cursor: pointer; font-size: 13px; font-weight: bold; margin-left: 2px; }
+    .chip-close:hover { color: #000; }
 
     .logs-box { background: #0f172a; color: #f8fafc; font-family: monospace; font-size: 12px; padding: 16px; border-radius: 8px; height: 500px; overflow-y: auto; line-height: 1.5; white-space: pre-wrap; }
     .status-alert { padding: 12px 16px; border-radius: 6px; font-size: 13px; margin-bottom: 16px; display: none; }
@@ -103,6 +114,43 @@
 
     <!-- TAB 1: DASHBOARD -->
     <div id="tab-status" class="tab-content active">
+      <!-- QUICK EXPORT DISPATCH PANEL -->
+      <div class="card" style="margin-bottom: 24px; background: linear-gradient(135deg, #eff6ff 0%, #f0fdf4 100%); border: 1px solid #bfdbfe; box-shadow: 0 2px 4px rgba(0,0,0,0.04);">
+        <div style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 14px;">
+          <div>
+            <div style="font-size: 15px; font-weight: 700; color: #1e3a8a;">⚡ Quick Export & Instant Email Dispatch</div>
+            <div style="font-size: 12px; color: #475569; margin-top: 2px;">
+              Sender Account: <strong>ranjithsvhpc1234@gmail.com</strong>
+            </div>
+          </div>
+          <span class="badge badge-ok" style="font-size: 12px; padding: 4px 10px;">Ready</span>
+        </div>
+
+        <div style="display: grid; grid-template-columns: 2fr 1fr auto; gap: 14px; align-items: end;">
+          <div>
+            <label style="display: block; font-size: 12px; font-weight: 700; color: #334155; margin-bottom: 5px;">
+              Receiver Email ID (Recipient)
+            </label>
+            <input type="email" id="quick-receiver-email" placeholder="Enter recipient email (e.g. client@example.com)" style="width: 100%; padding: 10px 12px; border: 1px solid #cbd5e1; border-radius: 6px; font-size: 13px; font-weight: 500;" required />
+          </div>
+          <div>
+            <label style="display: block; font-size: 12px; font-weight: 700; color: #334155; margin-bottom: 5px;">
+              Report Type
+            </label>
+            <select id="quick-report-type" style="width: 100%; padding: 9px 12px; border: 1px solid #cbd5e1; border-radius: 6px; font-size: 13px; font-weight: 500; background: white;">
+              <option value="Day Book">Day Book (Excel Format)</option>
+              <option value="Balance Sheet">Balance Sheet (Excel Format)</option>
+              <option value="Both">Both (Day Book & Balance Sheet)</option>
+            </select>
+          </div>
+          <div>
+            <button class="btn-primary" id="btn-quick-send" onclick="triggerQuickSend()" style="padding: 10px 22px; font-size: 13px; border-radius: 6px; box-shadow: 0 1px 2px rgba(0,0,0,0.1);">
+              📤 Send Now
+            </button>
+          </div>
+        </div>
+      </div>
+
       <div class="cards-grid">
         <div class="card">
           <div class="card-label">Engine Status</div>
@@ -243,17 +291,33 @@
             <div class="form-section">
               <h3>Email Recipients & Schedule</h3>
               <div class="form-group">
-                <label>To Recipients (comma-separated)</label>
-                <input type="text" id="mail-to" required />
+                <div style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 6px;">
+                  <label style="margin: 0;">To Recipients (Required)</label>
+                  <span id="to-count-badge" class="badge badge-idle" style="font-size: 10px;">0 addresses</span>
+                </div>
+                <textarea id="mail-to" rows="3" placeholder="Enter recipient email addresses (separated by comma, semicolon, space, or newline)..." oninput="updateRecipientChips('mail-to', 'to-chips-container', 'to-count-badge', true)" required></textarea>
+                <div class="hint">Accepts comma, semicolon, space or newlines. Duplicates are auto-removed.</div>
+                <div id="to-chips-container" class="chips-container"></div>
               </div>
+
               <div class="form-group">
-                <label>CC Recipients (comma-separated)</label>
-                <input type="text" id="mail-cc" />
+                <div style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 6px;">
+                  <label style="margin: 0;">CC Recipients (Optional)</label>
+                  <span id="cc-count-badge" class="badge badge-idle" style="font-size: 10px;">0 addresses</span>
+                </div>
+                <textarea id="mail-cc" rows="2" placeholder="Enter CC addresses..." oninput="updateRecipientChips('mail-cc', 'cc-chips-container', 'cc-count-badge', false)"></textarea>
+                <div id="cc-chips-container" class="chips-container"></div>
               </div>
+
               <div class="form-group">
-                <label>BCC Recipients (comma-separated)</label>
-                <input type="text" id="mail-bcc" />
+                <div style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 6px;">
+                  <label style="margin: 0;">BCC Recipients (Optional)</label>
+                  <span id="bcc-count-badge" class="badge badge-idle" style="font-size: 10px;">0 addresses</span>
+                </div>
+                <textarea id="mail-bcc" rows="2" placeholder="Enter BCC addresses..." oninput="updateRecipientChips('mail-bcc', 'bcc-chips-container', 'bcc-count-badge', false)"></textarea>
+                <div id="bcc-chips-container" class="chips-container"></div>
               </div>
+
               <div class="form-group">
                 <label>Subject Template</label>
                 <input type="text" id="subject-template" required />
@@ -292,6 +356,93 @@
   <script>
     let currentConfig = null;
 
+    const EMAIL_REGEX = /^[a-zA-Z0-9.!#$%&'*+/=?^_`{|}~-]+@[a-zA-Z0-9](?:[a-zA-Z0-9-]{0,61}[a-zA-Z0-9])?(?:\.[a-zA-Z0-9](?:[a-zA-Z0-9-]{0,61}[a-zA-Z0-9])?)+$/;
+    const PLACEHOLDER_DOMAIN_REGEX = /@(?:[a-zA-Z0-9-]+\.)*example\.(?:com|org|net)$/i;
+
+    function parseEmails(str) {
+      if (!str) return [];
+      const list = str.split(/[,;\s\r\n]+/);
+      const seen = new Set();
+      const res = [];
+      for (const item of list) {
+        const clean = item.trim();
+        if (!clean) continue;
+        const lower = clean.toLowerCase();
+        if (!seen.has(lower)) {
+          seen.add(lower);
+          res.push(clean);
+        }
+      }
+      return res;
+    }
+
+    function validateRecipientList(emails, fieldName, requireAtLeastOne = false) {
+      if (requireAtLeastOne && emails.length === 0) {
+        return `At least one ${fieldName} recipient email address is required.`;
+      }
+      for (const e of emails) {
+        if (!EMAIL_REGEX.test(e)) {
+          return `Invalid email address in ${fieldName}: '${e}'`;
+        }
+        if (PLACEHOLDER_DOMAIN_REGEX.test(e)) {
+          return `Placeholder domain 'example.com' is not allowed in ${fieldName}: '${e}'. Please enter real recipient email addresses.`;
+        }
+      }
+      return null;
+    }
+
+    function updateRecipientChips(inputId, containerId, badgeId, isRequired = false) {
+      const textarea = document.getElementById(inputId);
+      const container = document.getElementById(containerId);
+      const badge = document.getElementById(badgeId);
+      if (!textarea || !container) return;
+
+      const emails = parseEmails(textarea.value);
+
+      if (badge) {
+        if (emails.length === 0) {
+          badge.className = 'badge badge-idle';
+          badge.innerText = isRequired ? 'Required (0)' : '0 addresses';
+        } else {
+          badge.className = 'badge badge-ok';
+          badge.innerText = `${emails.length} address${emails.length > 1 ? 'es' : ''}`;
+        }
+      }
+
+      container.innerHTML = emails.map(email => {
+        let chipClass = 'chip-valid';
+        let icon = '✉️';
+        let suffix = '';
+
+        if (!EMAIL_REGEX.test(email)) {
+          chipClass = 'chip-invalid';
+          icon = '❌';
+          suffix = ' (invalid)';
+        } else if (PLACEHOLDER_DOMAIN_REGEX.test(email)) {
+          chipClass = 'chip-placeholder';
+          icon = '⚠️';
+          suffix = ' (example.com rejected)';
+        }
+
+        const safeEmail = email.replace(/'/g, "\\'");
+        return `
+          <span class="email-chip ${chipClass}">
+            <span>${icon} ${email}${suffix}</span>
+            <span class="chip-close" onclick="removeEmailFromField('${inputId}', '${safeEmail}', '${containerId}', '${badgeId}', ${isRequired})" title="Remove">×</span>
+          </span>
+        `;
+      }).join('');
+    }
+
+    function removeEmailFromField(inputId, emailToRemove, containerId, badgeId, isRequired) {
+      const textarea = document.getElementById(inputId);
+      if (!textarea) return;
+
+      const emails = parseEmails(textarea.value).filter(e => e.toLowerCase() !== emailToRemove.toLowerCase());
+      textarea.value = emails.join(', ');
+      updateRecipientChips(inputId, containerId, badgeId, isRequired);
+    }
+
     function switchTab(tab) {
       document.querySelectorAll('.tab-btn').forEach(b => b.classList.remove('active'));
       document.querySelectorAll('.tab-content').forEach(c => c.classList.remove('active'));
@@ -305,7 +456,7 @@
       banner.className = 'status-alert ' + (isSuccess ? 'alert-success' : 'alert-danger');
       banner.innerText = msg;
       banner.style.display = 'block';
-      setTimeout(() => { banner.style.display = 'none'; }, 6000);
+      setTimeout(() => { banner.style.display = 'none'; }, 7000);
     }
 
     async function fetchStatus() {
@@ -372,9 +523,30 @@
         document.getElementById('smtp-password').value = currentConfig.smtp.password || '';
         document.getElementById('smtp-from').value = currentConfig.smtp.from || '';
 
-        document.getElementById('mail-to').value = (currentConfig.mail.recipients.to || []).join(', ');
-        document.getElementById('mail-cc').value = (currentConfig.mail.recipients.cc || []).join(', ');
-        document.getElementById('mail-bcc').value = (currentConfig.mail.recipients.bcc || []).join(', ');
+        // Recipients
+        const toVal = (currentConfig.mail.recipients.to || []).join(', ');
+        document.getElementById('mail-to').value = toVal;
+        updateRecipientChips('mail-to', 'to-chips-container', 'to-count-badge', true);
+
+        // Pre-fill quick receiver email with first configured recipient
+        if (currentConfig.mail.recipients.to && currentConfig.mail.recipients.to.length > 0) {
+          const quickInput = document.getElementById('quick-receiver-email');
+          if (!quickInput.value) {
+            quickInput.value = currentConfig.mail.recipients.to.join(', ');
+          }
+        }
+        if (currentConfig.dayBook.reportType) {
+          document.getElementById('quick-report-type').value = currentConfig.dayBook.reportType;
+        }
+
+        const ccVal = (currentConfig.mail.recipients.cc || []).join(', ');
+        document.getElementById('mail-cc').value = ccVal;
+        updateRecipientChips('mail-cc', 'cc-chips-container', 'cc-count-badge', false);
+
+        const bccVal = (currentConfig.mail.recipients.bcc || []).join(', ');
+        document.getElementById('mail-bcc').value = bccVal;
+        updateRecipientChips('mail-bcc', 'bcc-chips-container', 'bcc-count-badge', false);
+
         document.getElementById('subject-template').value = currentConfig.mail.subjectTemplate;
         document.getElementById('attach-mode').value = currentConfig.attachMode;
         document.getElementById('interval-mins').value = currentConfig.schedule.intervalMinutes;
@@ -392,23 +564,48 @@
 
     async function saveConfiguration(e) {
       e.preventDefault();
+
+      const toEmails = parseEmails(document.getElementById('mail-to').value);
+      const ccEmails = parseEmails(document.getElementById('mail-cc').value);
+      const bccEmails = parseEmails(document.getElementById('mail-bcc').value);
+
+      // Validate To
+      const toError = validateRecipientList(toEmails, 'To', true);
+      if (toError) {
+        showAlert(toError, false);
+        document.getElementById('mail-to').focus();
+        return;
+      }
+
+      // Validate CC
+      const ccError = validateRecipientList(ccEmails, 'CC', false);
+      if (ccError) {
+        showAlert(ccError, false);
+        document.getElementById('mail-cc').focus();
+        return;
+      }
+
+      // Validate BCC
+      const bccError = validateRecipientList(bccEmails, 'BCC', false);
+      if (bccError) {
+        showAlert(bccError, false);
+        document.getElementById('mail-bcc').focus();
+        return;
+      }
+
       const compVal = document.getElementById('companies-list').value.trim();
       const companies = compVal.toLowerCase() === 'auto' ? 'auto' : compVal.split(',').map(s => s.trim()).filter(Boolean);
-
       const vTypes = document.getElementById('voucher-types').value.split(',').map(s => s.trim()).filter(Boolean);
-      const toRecipients = document.getElementById('mail-to').value.split(',').map(s => s.trim()).filter(Boolean);
-      const ccRecipients = document.getElementById('mail-cc').value.split(',').map(s => s.trim()).filter(Boolean);
-      const bccRecipients = document.getElementById('mail-bcc').value.split(',').map(s => s.trim()).filter(Boolean);
 
-      const newConfig = {
-        ...currentConfig,
+      const payload = {
         tally: {
           host: document.getElementById('tally-host').value.trim(),
           port: parseInt(document.getElementById('tally-port').value, 10),
-          timeoutMs: currentConfig.tally.timeoutMs || 60000,
+          timeoutMs: currentConfig.tally?.timeoutMs || 60000,
         },
         companies,
         dayBook: {
+          reportType: document.getElementById('quick-report-type')?.value || currentConfig.dayBook?.reportType || 'Day Book',
           periodMode: document.getElementById('period-mode').value,
           fromDate: document.getElementById('from-date').value.trim() || undefined,
           toDate: document.getElementById('to-date').value.trim() || undefined,
@@ -427,9 +624,9 @@
         },
         mail: {
           recipients: {
-            to: toRecipients,
-            cc: ccRecipients,
-            bcc: bccRecipients,
+            to: toEmails,
+            cc: ccEmails,
+            bcc: bccEmails,
           },
           subjectTemplate: document.getElementById('subject-template').value.trim(),
         },
@@ -444,17 +641,56 @@
         const res = await fetch('/api/config', {
           method: 'POST',
           headers: { 'Content-Type': 'application/json' },
-          body: JSON.stringify(newConfig),
+          body: JSON.stringify(payload),
         });
         const data = await res.json();
         if (data.success) {
           showAlert('Settings saved successfully!');
           fetchConfig();
         } else {
-          showAlert('Save failed: ' + (data.errors ? data.errors.join(', ') : data.error), false);
+          showAlert('Save failed: ' + (data.errors ? data.errors.join('; ') : data.error || data.message), false);
         }
       } catch (err) {
         showAlert('Save failed: ' + err.message, false);
+      }
+    }
+
+    async function triggerQuickSend() {
+      const rawInput = document.getElementById('quick-receiver-email').value.trim();
+      const reportType = document.getElementById('quick-report-type').value;
+
+      const emails = parseEmails(rawInput);
+      const err = validateRecipientList(emails, 'Receiver', true);
+      if (err) {
+        showAlert(err, false);
+        document.getElementById('quick-receiver-email').focus();
+        return;
+      }
+
+      try {
+        const btn = document.getElementById('btn-quick-send');
+        btn.disabled = true;
+        btn.innerText = '⏳ Exporting & Sending...';
+
+        const res = await fetch('/api/run-now', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({
+            receiverEmail: emails.join(', '),
+            reportType: reportType,
+          }),
+        });
+
+        const data = await res.json();
+        showAlert(data.message, data.success);
+
+        setTimeout(() => {
+          btn.disabled = false;
+          btn.innerText = '📤 Send Now';
+          fetchStatus();
+        }, 3000);
+      } catch (err) {
+        showAlert('Dispatch error: ' + err.message, false);
       }
     }
 
@@ -495,10 +731,44 @@
 
     async function testMail() {
       try {
-        showAlert('Testing SMTP connection...', true);
-        const res = await fetch('/api/test-mail', { method: 'POST' });
+        // Read To addresses from Settings textarea if entered, or dashboard quick input, or active config
+        let toStr = document.getElementById('mail-to')?.value?.trim();
+        if (!toStr && document.getElementById('quick-receiver-email')) {
+          toStr = document.getElementById('quick-receiver-email').value.trim();
+        }
+
+        const toList = parseEmails(toStr);
+        const toError = validateRecipientList(toList, 'To', true);
+        if (toError) {
+          showAlert(toError, false);
+          return;
+        }
+
+        showAlert(`Sending test email to ${toList.length} recipient(s)...`, true);
+
+        // Gather currently entered credentials from the form even if not saved yet
+        const payload = {
+          to: toList,
+          host: document.getElementById('smtp-host')?.value?.trim(),
+          port: document.getElementById('smtp-port')?.value ? parseInt(document.getElementById('smtp-port').value, 10) : undefined,
+          secure: document.getElementById('smtp-secure')?.checked,
+          user: document.getElementById('smtp-user')?.value?.trim(),
+          password: document.getElementById('smtp-password')?.value,
+          from: document.getElementById('smtp-from')?.value?.trim(),
+        };
+
+        const res = await fetch('/api/test-mail', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify(payload),
+        });
         const data = await res.json();
-        showAlert(data.message, data.success);
+        if (data.success) {
+          showAlert(data.message, true);
+        } else {
+          // Show exact SMTP error text on failure
+          showAlert(data.message || 'SMTP test failed', false);
+        }
       } catch (err) {
         showAlert('SMTP test failed: ' + err.message, false);
       }

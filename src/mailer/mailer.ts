@@ -51,6 +51,49 @@ export class MailerService {
   }
 
   /**
+   * Sends a real test email to the given recipient list, reporting exact SMTP error text on failure.
+   */
+  public async sendTestEmail(toRecipients: string[]): Promise<{ success: boolean; message: string }> {
+    if (!this.transporter) {
+      return { success: false, message: 'SMTP Transporter not initialized.' };
+    }
+
+    try {
+      await this.transporter.verify();
+
+      const toCount = toRecipients.length;
+      logger.info(`Sending test email to ${toCount} recipient(s)...`);
+
+      const info = await this.transporter.sendMail({
+        from: this.config.smtp.from || this.config.smtp.user,
+        to: toRecipients,
+        subject: `[TEST] TallyDayBookMailer SMTP Test (${new Date().toLocaleTimeString()})`,
+        text: 'This is a test email sent from TallyDayBookMailer to verify SMTP connectivity and recipient routing.',
+        html: `
+          <div style="font-family: sans-serif; padding: 20px; background: #f8fafc; border-radius: 8px;">
+            <h2 style="color: #1e40af; margin-top: 0;">✅ SMTP Test Successful!</h2>
+            <p>This test email confirms that <strong>TallyDayBookMailer</strong> can successfully authenticate with your SMTP server and deliver messages.</p>
+            <p style="font-size: 12px; color: #64748b;">Timestamp: ${new Date().toISOString()}</p>
+          </div>
+        `,
+      });
+
+      logger.info(`Test email sent successfully to ${toCount} recipient(s). Message ID: ${info.messageId}`);
+      return {
+        success: true,
+        message: `Test email sent successfully to ${toCount} recipient(s)! (Message ID: ${info.messageId})`,
+      };
+    } catch (err: any) {
+      const errDetails = `${err.message}${err.code ? ` [Code: ${err.code}]` : ''}${err.response ? ` - ${err.response}` : ''}`;
+      logger.error(`SMTP Test failed: ${errDetails}`);
+      return {
+        success: false,
+        message: `SMTP Test failed: ${errDetails}`,
+      };
+    }
+  }
+
+  /**
    * Sends export report email with attachments, with 3x retry and exponential backoff
    */
   public async sendDayBookEmail(options: SendEmailOptions): Promise<boolean> {
@@ -149,10 +192,14 @@ export class MailerService {
     let attempt = 0;
     let delay = 2000; // start 2 seconds
 
+    const toCount = Array.isArray(mailOptions.to) ? mailOptions.to.length : (mailOptions.to ? 1 : 0);
+    const ccCount = Array.isArray(mailOptions.cc) ? mailOptions.cc.length : (mailOptions.cc ? 1 : 0);
+    const bccCount = Array.isArray(mailOptions.bcc) ? mailOptions.bcc.length : (mailOptions.bcc ? 1 : 0);
+
     while (attempt < maxRetries) {
       attempt++;
       try {
-        logger.info(`Sending email (attempt ${attempt}/${maxRetries}) to: ${JSON.stringify(mailOptions.to)}`);
+        logger.info(`Sending email (attempt ${attempt}/${maxRetries}) to ${toCount} recipient(s) (CC: ${ccCount}, BCC: ${bccCount})`);
         const info = await this.transporter.sendMail(mailOptions);
         logger.info(`Email successfully dispatched! Message ID: ${info.messageId}`);
         return true;

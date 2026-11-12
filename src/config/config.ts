@@ -2,6 +2,7 @@ import * as fs from 'fs';
 import * as path from 'path';
 import { AppConfig } from './types';
 import { encryptPassword, decryptPassword } from '../utils/crypto';
+import { parseEmailList, validateEmailList } from '../utils/emailValidator';
 import { logger } from '../utils/logger';
 
 const CONFIG_PATH = path.resolve(process.cwd(), 'config.json');
@@ -34,9 +35,9 @@ export const DEFAULT_CONFIG: AppConfig = {
     host: 'smtp.gmail.com',
     port: 587,
     secure: false,
-    user: 'adventsystems.sales6@gmail.com',
+    user: 'ranjithsvhpc1234@gmail.com',
     password: '',
-    from: 'Tally DayBook Mailer <adventsystems.sales6@gmail.com>',
+    from: 'Tally DayBook Mailer <ranjithsvhpc1234@gmail.com>',
   },
   mail: {
     recipients: {
@@ -93,8 +94,36 @@ export function validateConfig(config: Partial<AppConfig>): { valid: boolean; er
 
   if (!config.smtp?.host) errors.push('smtp.host is required');
   if (!config.smtp?.port) errors.push('smtp.port is required');
-  if (!config.mail?.recipients?.to || config.mail.recipients.to.length === 0) {
-    errors.push('At least one recipient in mail.recipients.to is required');
+
+  // Validate To recipients (require at least one, reject placeholder domains)
+  const toValidation = validateEmailList(config.mail?.recipients?.to, 'To', {
+    requireAtLeastOne: true,
+    rejectPlaceholders: true,
+  });
+  if (!toValidation.valid && toValidation.error) {
+    errors.push(toValidation.error);
+  }
+
+  // Validate CC recipients (optional, reject placeholder domains)
+  if (config.mail?.recipients?.cc) {
+    const ccValidation = validateEmailList(config.mail.recipients.cc, 'CC', {
+      requireAtLeastOne: false,
+      rejectPlaceholders: true,
+    });
+    if (!ccValidation.valid && ccValidation.error) {
+      errors.push(ccValidation.error);
+    }
+  }
+
+  // Validate BCC recipients (optional, reject placeholder domains)
+  if (config.mail?.recipients?.bcc) {
+    const bccValidation = validateEmailList(config.mail.recipients.bcc, 'BCC', {
+      requireAtLeastOne: false,
+      rejectPlaceholders: true,
+    });
+    if (!bccValidation.valid && bccValidation.error) {
+      errors.push(bccValidation.error);
+    }
   }
 
   if (!['separate', 'zip'].includes(config.attachMode || '')) {
@@ -102,6 +131,77 @@ export function validateConfig(config: Partial<AppConfig>): { valid: boolean; er
   }
 
   return { valid: errors.length === 0, errors };
+}
+
+/**
+ * Safely merges incoming form payload into existing config.
+ * Never wipes existing config values. Preserves password if blank or masked.
+ */
+export function mergeConfig(existing: AppConfig, incoming: Partial<AppConfig>): AppConfig {
+  const merged: AppConfig = {
+    ...existing,
+    ...incoming,
+    tally: {
+      ...existing.tally,
+      ...(incoming.tally || {}),
+    },
+    dayBook: {
+      ...existing.dayBook,
+      ...(incoming.dayBook || {}),
+    },
+    schedule: {
+      ...existing.schedule,
+      ...(incoming.schedule || {}),
+      activeWindow: {
+        ...(existing.schedule?.activeWindow || { enabled: false, start: '09:00', end: '20:00' }),
+        ...(incoming.schedule?.activeWindow || {}),
+      },
+    },
+    smtp: {
+      ...existing.smtp,
+      ...(incoming.smtp || {}),
+    },
+    mail: {
+      ...existing.mail,
+      ...(incoming.mail || {}),
+      recipients: {
+        to: incoming.mail?.recipients?.to !== undefined
+          ? parseEmailList(incoming.mail.recipients.to)
+          : existing.mail.recipients.to,
+        cc: incoming.mail?.recipients?.cc !== undefined
+          ? parseEmailList(incoming.mail.recipients.cc)
+          : existing.mail.recipients.cc || [],
+        bcc: incoming.mail?.recipients?.bcc !== undefined
+          ? parseEmailList(incoming.mail.recipients.bcc)
+          : existing.mail.recipients.bcc || [],
+      },
+    },
+    keepLocalCopies: {
+      ...existing.keepLocalCopies,
+      ...(incoming.keepLocalCopies || {}),
+    },
+    webUi: {
+      ...existing.webUi,
+      ...(incoming.webUi || {}),
+    },
+  };
+
+  // Password preservation:
+  // If incoming password is empty, blank, or masked ("********" or starts with "****"),
+  // keep the existing password!
+  const rawPass = incoming.smtp?.password;
+  const incomingPass = typeof rawPass === 'string' ? rawPass.trim() : '';
+
+  if (!incomingPass || incomingPass === '********' || incomingPass.startsWith('****')) {
+    merged.smtp.password = existing.smtp.password;
+  } else if (!incomingPass.startsWith('enc:')) {
+    // Re-encrypt newly entered real password
+    merged.smtp.password = encryptPassword(incomingPass);
+  } else {
+    merged.smtp.password = incomingPass;
+  }
+
+  return merged;
 }
 
 /**
@@ -135,21 +235,7 @@ export function loadConfig(): AppConfig {
   }
 
   // Merge with defaults for any missing keys
-  const merged: AppConfig = {
-    ...DEFAULT_CONFIG,
-    ...loaded,
-    tally: { ...DEFAULT_CONFIG.tally, ...(loaded.tally || {}) },
-    dayBook: { ...DEFAULT_CONFIG.dayBook, ...(loaded.dayBook || {}) },
-    schedule: { ...DEFAULT_CONFIG.schedule, ...(loaded.schedule || {}) },
-    smtp: { ...DEFAULT_CONFIG.smtp, ...(loaded.smtp || {}) },
-    mail: {
-      ...DEFAULT_CONFIG.mail,
-      ...(loaded.mail || {}),
-      recipients: { ...DEFAULT_CONFIG.mail.recipients, ...(loaded.mail?.recipients || {}) },
-    },
-    keepLocalCopies: { ...DEFAULT_CONFIG.keepLocalCopies, ...(loaded.keepLocalCopies || {}) },
-    webUi: { ...DEFAULT_CONFIG.webUi, ...(loaded.webUi || {}) },
-  };
+  const merged: AppConfig = mergeConfig(DEFAULT_CONFIG, loaded);
 
   // If password was stored in plaintext, encrypt it on disk
   if (merged.smtp.password && !merged.smtp.password.startsWith('enc:')) {
@@ -167,7 +253,7 @@ export function loadConfig(): AppConfig {
 }
 
 /**
- * Saves config to disk.
+ * Saves config to disk atomically via write-to-temp-then-rename.
  */
 export function saveConfig(config: AppConfig): void {
   // Ensure password is encrypted before writing
@@ -176,7 +262,12 @@ export function saveConfig(config: AppConfig): void {
     toSave.smtp.password = encryptPassword(toSave.smtp.password);
   }
 
-  const tmpPath = `${CONFIG_PATH}.tmp`;
+  const dir = path.dirname(CONFIG_PATH);
+  if (!fs.existsSync(dir)) {
+    fs.mkdirSync(dir, { recursive: true });
+  }
+
+  const tmpPath = `${CONFIG_PATH}.${Date.now()}.tmp`;
   fs.writeFileSync(tmpPath, JSON.stringify(toSave, null, 2), 'utf8');
   fs.renameSync(tmpPath, CONFIG_PATH);
 }

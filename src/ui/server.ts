@@ -2,7 +2,9 @@ import express, { Request, Response } from 'express';
 import * as path from 'path';
 import * as fs from 'fs';
 import { AppConfig } from '../config/types';
-import { loadConfig, saveConfig, validateConfig } from '../config/config';
+import { loadConfig, saveConfig, validateConfig, mergeConfig } from '../config/config';
+import { parseEmailList, validateEmailList } from '../utils/emailValidator';
+import { MailerService } from '../mailer/mailer';
 import { AppScheduler } from '../scheduler/scheduler';
 import { ExportOrchestrator } from '../scheduler/orchestrator';
 import { StateManager } from '../scheduler/stateManager';
@@ -72,25 +74,32 @@ export class WebUiServer {
       res.json(cfg);
     });
 
-    // API: Save Config
+    // API: Save Config (validates, merges into existing config, and writes config.json atomically)
     this.app.post('/api/config', (req: Request, res: Response) => {
       try {
-        const incoming = req.body as AppConfig;
+        const incoming = req.body as Partial<AppConfig>;
 
-        // If password was left masked, retain previous encrypted password
-        if (incoming.smtp.password === '********') {
-          incoming.smtp.password = this.config.smtp.password;
-        }
+        // Merge incoming into existing config without overwriting unmodified keys or wiping password
+        const merged = mergeConfig(this.config, incoming);
 
-        const validation = validateConfig(incoming);
+        // Validate merged config
+        const validation = validateConfig(merged);
         if (!validation.valid) {
           return res.status(400).json({ success: false, errors: validation.errors });
         }
 
-        saveConfig(incoming);
-        this.config = incoming;
-        this.onConfigUpdate(incoming);
-        logger.info('Configuration updated via Web UI.');
+        // Save atomically (saveConfig writes to temp file and renames)
+        saveConfig(merged);
+        this.config = merged;
+
+        // Propagate updated config to scheduler and orchestrator immediately
+        this.onConfigUpdate(merged);
+        this.orchestrator.updateConfig(merged);
+
+        const toCount = merged.mail.recipients.to.length;
+        const ccCount = merged.mail.recipients.cc?.length || 0;
+        const bccCount = merged.mail.recipients.bcc?.length || 0;
+        logger.info(`Configuration updated via Web UI. Recipients configured: ${toCount} (CC: ${ccCount}, BCC: ${bccCount})`);
 
         res.json({ success: true, message: 'Settings saved and applied successfully!' });
       } catch (err: any) {
@@ -99,33 +108,103 @@ export class WebUiServer {
       }
     });
 
-    // API: Trigger "Send Now" (Manual Run)
+    // API: Trigger "Send Now" (Manual Run with optional custom recipient and report type)
     this.app.post('/api/run-now', async (req: Request, res: Response) => {
       try {
         if (this.orchestrator.getIsRunning()) {
           return res.status(409).json({ success: false, message: 'An export cycle is already running' });
         }
 
+        let receiverEmails: string[] | undefined = undefined;
+        if (req.body.receiverEmail) {
+          const parsed = parseEmailList(req.body.receiverEmail);
+          const validation = validateEmailList(parsed, 'To', { requireAtLeastOne: true, rejectPlaceholders: true });
+          if (!validation.valid) {
+            return res.status(400).json({ success: false, message: validation.error });
+          }
+          receiverEmails = validation.emails;
+        }
+
+        const reportType = req.body.reportType || this.config.dayBook.reportType || 'Day Book';
+
+        const overrideOptions: { recipients?: string[]; reportType?: string } = {
+          reportType,
+        };
+
+        if (receiverEmails && receiverEmails.length > 0) {
+          overrideOptions.recipients = receiverEmails;
+          // Merge and persist into active config
+          this.config = mergeConfig(this.config, {
+            mail: {
+              ...this.config.mail,
+              recipients: {
+                ...this.config.mail.recipients,
+                to: receiverEmails,
+              },
+            },
+          });
+          try {
+            saveConfig(this.config);
+          } catch (e: any) {
+            logger.warn(`Could not persist receiver email: ${e.message}`);
+          }
+        }
+
+        const toCount = overrideOptions.recipients ? overrideOptions.recipients.length : this.config.mail.recipients.to.length;
+        logger.info(`Manual run requested for ${reportType} to ${toCount} recipient(s)...`);
+
         // Run asynchronously so UI gets immediate feedback or wait
-        this.scheduler.triggerManualRun()
+        this.scheduler.triggerManualRun(overrideOptions)
           .then((summary) => {
-            logger.info('Manual run initiated from Web UI completed successfully.');
+            logger.info(`Manual run initiated from Web UI completed successfully. Dispatched to ${toCount} recipient(s).`);
           })
           .catch((err) => {
             logger.error(`Manual run from Web UI failed: ${err.message}`);
           });
 
-        res.json({ success: true, message: 'Export cycle triggered! Monitor live progress in the Status tab.' });
+        res.json({
+          success: true,
+          message: `Export triggered for ${reportType}! Sending to ${toCount} recipient(s). Monitor live progress in the Status tab.`,
+        });
       } catch (err: any) {
         res.status(500).json({ success: false, error: err.message });
       }
     });
 
-    // API: Test SMTP Connection
+    // API: Test SMTP Connection & Send Test Email (Sends to currently entered To addresses even if unsaved)
     this.app.post('/api/test-mail', async (req: Request, res: Response) => {
       try {
-        const mailer = this.orchestrator.getMailer();
-        const testRes = await mailer.verifyConnection();
+        const rawTo = req.body.to || this.config.mail.recipients.to;
+        const toList = parseEmailList(rawTo);
+
+        // Validate To addresses (require at least 1, reject placeholder domains)
+        const toValidation = validateEmailList(toList, 'To', { requireAtLeastOne: true, rejectPlaceholders: true });
+        if (!toValidation.valid) {
+          return res.status(400).json({ success: false, message: toValidation.error });
+        }
+
+        // Build temporary test configuration merging any unsaved form fields
+        const testConfig: AppConfig = mergeConfig(this.config, {
+          smtp: {
+            host: req.body.host || this.config.smtp.host,
+            port: req.body.port ? parseInt(req.body.port, 10) : this.config.smtp.port,
+            secure: req.body.secure !== undefined ? !!req.body.secure : this.config.smtp.secure,
+            user: req.body.user || this.config.smtp.user,
+            password: req.body.password || this.config.smtp.password,
+            from: req.body.from || this.config.smtp.from,
+          },
+          mail: {
+            ...this.config.mail,
+            recipients: {
+              ...this.config.mail.recipients,
+              to: toList,
+            },
+          },
+        });
+
+        // Initialize mailer with this config and dispatch real test email
+        const mailer = new MailerService(testConfig);
+        const testRes = await mailer.sendTestEmail(toList);
         res.json(testRes);
       } catch (err: any) {
         res.status(500).json({ success: false, message: `SMTP check failed: ${err.message}` });

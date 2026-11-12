@@ -1,0 +1,24 @@
+# Configuration and Runtime State
+config.json
+state.json
+.key
+
+# Build output
+dist/
+
+# Dependencies
+node_modules/
+
+# Logs and local exports
+logs/
+exports/
+exports_test/
+*.log
+
+# Temporary files
+*.tmp
+*.tmp.*
+
+# OS generated
+Thumbs.db
+[Dd]esktop.ini

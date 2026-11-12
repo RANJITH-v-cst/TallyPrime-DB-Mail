@@ -1,6 +1,8 @@
 import * as fs from 'fs';
 import * as path from 'path';
 import { AppConfig, CompanyExportResult, ExportCycleSummary } from '../config/types';
+import { loadConfig } from '../config/config';
+import { parseEmailList } from '../utils/emailValidator';
 import { TallyClient } from '../tally/client';
 import { CompanyDiscoveryService } from '../tally/companyDiscovery';
 import { ExporterFactory } from '../tally/exporterFactory';
@@ -35,6 +37,10 @@ export class ExportOrchestrator {
     this.mailer.initTransporter(newConfig);
   }
 
+  public getConfig(): AppConfig {
+    return this.config;
+  }
+
   public getIsRunning(): boolean {
     return this.isCycleRunning;
   }
@@ -49,6 +55,7 @@ export class ExportOrchestrator {
 
   /**
    * Runs a complete export cycle across all open/configured companies sequentially.
+   * Reloads freshest config at the start of every cycle.
    */
   public async runCycle(overrideOptions?: { recipients?: string[]; reportType?: string }): Promise<ExportCycleSummary> {
     if (this.isCycleRunning) {
@@ -59,6 +66,15 @@ export class ExportOrchestrator {
     this.isCycleRunning = true;
     const startTime = new Date();
     const cycleDateStr = this.toYyyyMmDd(startTime);
+
+    // Always reload latest configuration from disk so edits/recipient updates are picked up without restart
+    try {
+      const freshConfig = loadConfig();
+      this.updateConfig(freshConfig);
+    } catch (e: any) {
+      logger.warn(`Could not reload config from disk, using in-memory config: ${e.message}`);
+    }
+
     const activeReportType = overrideOptions?.reportType || this.config.dayBook.reportType || 'Day Book';
 
     logger.info('=====================================================');
@@ -163,20 +179,28 @@ export class ExportOrchestrator {
         emailSent: false,
       };
 
-      // Step 5: Send Email
-      logger.info(`Dispatching export summary email for ${results.length} exports...`);
+      // Step 5: Send Email with clean de-duplicated recipients
+      const effectiveRecipients = overrideOptions?.recipients && overrideOptions.recipients.length > 0
+        ? parseEmailList(overrideOptions.recipients)
+        : parseEmailList(this.config.mail.recipients.to);
+
       const effectiveConfig: AppConfig = {
         ...this.config,
         mail: {
           ...this.config.mail,
           recipients: {
             ...this.config.mail.recipients,
-            to: overrideOptions?.recipients && overrideOptions.recipients.length > 0
-              ? overrideOptions.recipients
-              : this.config.mail.recipients.to,
+            to: effectiveRecipients,
+            cc: parseEmailList(this.config.mail.recipients.cc),
+            bcc: parseEmailList(this.config.mail.recipients.bcc),
           },
         },
       };
+
+      const toCount = effectiveRecipients.length;
+      const ccCount = effectiveConfig.mail.recipients.cc?.length || 0;
+      const bccCount = effectiveConfig.mail.recipients.bcc?.length || 0;
+      logger.info(`Dispatching export summary email for ${results.length} export(s) to ${toCount} recipient(s) (CC: ${ccCount}, BCC: ${bccCount})...`);
 
       const emailSent = await this.mailer.sendDayBookEmail({
         summary,
@@ -341,4 +365,44 @@ export class ExportOrchestrator {
           res.filePath = filePath;
           logger.info(`Saved local copy: ${filePath}`);
         } catch (err: any) {
-   
+          logger.error(`Error saving local copy for "${res.companyName}": ${err.message}`);
+        }
+      }
+    }
+  }
+
+  /**
+   * Cleans up local copies older than retentionDays
+   */
+  private cleanOldLocalCopies(): void {
+    const retentionDays = this.config.keepLocalCopies.retentionDays || 30;
+    const outDir = path.resolve(process.cwd(), this.config.keepLocalCopies.outputFolder || './exports');
+    if (!fs.existsSync(outDir)) return;
+
+    try {
+      const files = fs.readdirSync(outDir);
+      const cutoffTime = Date.now() - retentionDays * 24 * 60 * 60 * 1000;
+
+      for (const file of files) {
+        if (!file.endsWith('.xlsx') && !file.endsWith('.zip')) continue;
+        const filePath = path.join(outDir, file);
+        const stats = fs.statSync(filePath);
+        if (stats.mtimeMs < cutoffTime) {
+          fs.unlinkSync(filePath);
+          logger.info(`Removed expired local export file: ${file}`);
+        }
+      }
+    } catch (err: any) {
+      logger.warn(`Error during local copies retention cleanup: ${err.message}`);
+    }
+  }
+
+  public getDiscoveryService(): CompanyDiscoveryService {
+    return this.discoveryService;
+  }
+
+  public getMailer(): MailerService {
+    return this.mailer;
+  }
+}
+

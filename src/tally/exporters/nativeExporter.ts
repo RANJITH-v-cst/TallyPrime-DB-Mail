@@ -90,4 +90,7 @@ ${voucherTypeFilter}   </STATICVARIABLES>
     return {
       success: false,
       voucherCount: 0,
-      error: `A
+      error: `All native formats failed for "${options.companyName}". ${lastError}`,
+    };
+  }
+}
