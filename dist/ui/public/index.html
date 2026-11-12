@@ -1,0 +1,526 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>TallyDayBookMailer - Control Center</title>
+  <style>
+    :root {
+      --primary: #1e40af;
+      --primary-hover: #1d4ed8;
+      --bg: #f8fafc;
+      --card-bg: #ffffff;
+      --border: #e2e8f0;
+      --text: #0f172a;
+      --text-muted: #64748b;
+      --success: #10b981;
+      --danger: #ef4444;
+      --warning: #f59e0b;
+    }
+    * { box-sizing: border-box; margin: 0; padding: 0; font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif; }
+    body { background-color: var(--bg); color: var(--text); padding: 24px; }
+    .container { max-width: 1100px; margin: 0 auto; }
+    header { display: flex; justify-content: space-between; align-items: center; margin-bottom: 24px; padding-bottom: 16px; border-bottom: 1px solid var(--border); }
+    .brand { display: flex; align-items: center; gap: 12px; }
+    .logo-badge { background: var(--primary); color: white; font-weight: 700; font-size: 18px; padding: 6px 12px; border-radius: 6px; }
+    .title-box h1 { font-size: 20px; font-weight: 700; }
+    .title-box p { font-size: 13px; color: var(--text-muted); }
+    .header-actions { display: flex; gap: 10px; }
+
+    button {
+      padding: 8px 16px; border-radius: 6px; border: 1px solid transparent; font-size: 13px; font-weight: 600; cursor: pointer; transition: all 0.2s;
+    }
+    .btn-primary { background: var(--primary); color: white; }
+    .btn-primary:hover { background: var(--primary-hover); }
+    .btn-secondary { background: white; border-color: var(--border); color: var(--text); }
+    .btn-secondary:hover { background: #f1f5f9; }
+
+    .tabs { display: flex; gap: 8px; margin-bottom: 20px; border-bottom: 1px solid var(--border); padding-bottom: 8px; }
+    .tab-btn { background: none; border: none; font-size: 14px; font-weight: 600; color: var(--text-muted); padding: 8px 16px; border-radius: 6px; cursor: pointer; }
+    .tab-btn.active { color: var(--primary); background: #eff6ff; }
+
+    .tab-content { display: none; }
+    .tab-content.active { display: block; }
+
+    .cards-grid { display: grid; grid-template-columns: repeat(auto-fit, minmax(200px, 1fr)); gap: 16px; margin-bottom: 24px; }
+    .card { background: var(--card-bg); border: 1px solid var(--border); border-radius: 8px; padding: 18px; box-shadow: 0 1px 3px rgba(0,0,0,0.02); }
+    .card-label { font-size: 12px; color: var(--text-muted); font-weight: 600; text-transform: uppercase; margin-bottom: 6px; }
+    .card-val { font-size: 24px; font-weight: 700; }
+
+    .table-container { background: var(--card-bg); border: 1px solid var(--border); border-radius: 8px; overflow: hidden; margin-bottom: 24px; }
+    table { width: 100%; border-collapse: collapse; font-size: 13px; text-align: left; }
+    th { background: #f8fafc; padding: 12px 16px; font-weight: 600; color: var(--text-muted); border-bottom: 1px solid var(--border); }
+    td { padding: 12px 16px; border-bottom: 1px solid var(--border); }
+    tr:last-child td { border-bottom: none; }
+
+    .badge { display: inline-block; padding: 3px 8px; border-radius: 4px; font-size: 11px; font-weight: 700; color: white; text-align: center; }
+    .badge-ok { background: var(--success); }
+    .badge-failed { background: var(--danger); }
+    .badge-warn { background: var(--warning); }
+    .badge-idle { background: #94a3b8; }
+
+    .form-grid { display: grid; grid-template-columns: repeat(2, 1fr); gap: 20px; }
+    .form-section { background: white; border: 1px solid var(--border); border-radius: 8px; padding: 20px; margin-bottom: 20px; }
+    .form-section h3 { font-size: 15px; font-weight: 600; margin-bottom: 16px; border-bottom: 1px solid var(--border); padding-bottom: 8px; }
+    .form-group { margin-bottom: 14px; }
+    .form-group label { display: block; font-size: 13px; font-weight: 600; margin-bottom: 6px; }
+    .form-group input, .form-group select, .form-group textarea {
+      width: 100%; padding: 8px 12px; border: 1px solid var(--border); border-radius: 6px; font-size: 13px; outline: none;
+    }
+    .form-group input:focus, .form-group select:focus, .form-group textarea:focus { border-color: var(--primary); }
+    .hint { font-size: 11px; color: var(--text-muted); margin-top: 4px; }
+
+    .logs-box { background: #0f172a; color: #f8fafc; font-family: monospace; font-size: 12px; padding: 16px; border-radius: 8px; height: 500px; overflow-y: auto; line-height: 1.5; white-space: pre-wrap; }
+    .status-alert { padding: 12px 16px; border-radius: 6px; font-size: 13px; margin-bottom: 16px; display: none; }
+    .alert-success { background: #ecfdf5; border: 1px solid #a7f3d0; color: #065f46; }
+    .alert-danger { background: #fef2f2; border: 1px solid #fecaca; color: #991b1b; }
+  </style>
+</head>
+<body>
+  <div class="container">
+    <header>
+      <div class="brand">
+        <div class="logo-badge">TP</div>
+        <div class="title-box">
+          <h1>TallyDayBookMailer</h1>
+          <p>Windows Middleware for Automated Multi-Company Day Book Dispatch</p>
+        </div>
+      </div>
+      <div class="header-actions">
+        <button class="btn-secondary" onclick="testTally()">Test Tally</button>
+        <button class="btn-secondary" onclick="testMail()">Test Mail</button>
+        <button class="btn-primary" id="btn-run-now" onclick="triggerRunNow()">▶ Send Now</button>
+      </div>
+    </header>
+
+    <div id="alert-banner" class="status-alert"></div>
+
+    <div class="tabs">
+      <button class="tab-btn active" onclick="switchTab('status')">Dashboard</button>
+      <button class="tab-btn" onclick="switchTab('settings')">Settings</button>
+      <button class="tab-btn" onclick="switchTab('logs')">Live Logs</button>
+    </div>
+
+    <!-- TAB 1: DASHBOARD -->
+    <div id="tab-status" class="tab-content active">
+      <div class="cards-grid">
+        <div class="card">
+          <div class="card-label">Engine Status</div>
+          <div class="card-val" id="engine-status"><span class="badge badge-idle">IDLE</span></div>
+        </div>
+        <div class="card">
+          <div class="card-label">Last Export Cycle</div>
+          <div class="card-val" id="last-cycle-time" style="font-size: 16px; padding-top: 6px;">Never</div>
+        </div>
+        <div class="card">
+          <div class="card-label">Next Scheduled Run</div>
+          <div class="card-val" id="next-run-time" style="font-size: 16px; padding-top: 6px;">--</div>
+        </div>
+        <div class="card">
+          <div class="card-label">Interval</div>
+          <div class="card-val" id="interval-display" style="font-size: 20px;">30 min</div>
+        </div>
+      </div>
+
+      <div class="table-container">
+        <table>
+          <thead>
+            <tr>
+              <th>Company Name</th>
+              <th>Status</th>
+              <th>Period</th>
+              <th>Vouchers</th>
+              <th>Last Generated</th>
+              <th>Details</th>
+            </tr>
+          </thead>
+          <tbody id="company-status-rows">
+            <tr><td colspan="6" style="text-align: center; color: var(--text-muted);">No runs recorded yet. Click "Send Now" to start first cycle.</td></tr>
+          </tbody>
+        </table>
+      </div>
+    </div>
+
+    <!-- TAB 2: SETTINGS -->
+    <div id="tab-settings" class="tab-content">
+      <form id="config-form" onsubmit="saveConfiguration(event)">
+        <div class="form-grid">
+          <div>
+            <div class="form-section">
+              <h3>TallyPrime Server Connection</h3>
+              <div class="form-group">
+                <label>Tally Host</label>
+                <input type="text" id="tally-host" required />
+              </div>
+              <div class="form-group">
+                <label>Tally Port</label>
+                <input type="number" id="tally-port" required />
+                <div class="hint">Default port is 9000 (Tally F1 Help > Settings > Connectivity)</div>
+              </div>
+              <div class="form-group">
+                <label>Companies</label>
+                <input type="text" id="companies-list" placeholder='auto OR ["Company A", "Company B"]' required />
+                <div class="hint">Enter <strong>auto</strong> to discover all 5 open tabs, or comma-separated names.</div>
+              </div>
+            </div>
+
+            <div class="form-section">
+              <h3>Day Book Export Options</h3>
+              <div class="form-group">
+                <label>Period Mode</label>
+                <select id="period-mode" onchange="togglePeriodFields()">
+                  <option value="today">Today (Full day up to now)</option>
+                  <option value="sinceLastRun">Since Last Run (Incremental, tracks ALTERID)</option>
+                  <option value="customRange">Custom Date Range</option>
+                </select>
+              </div>
+              <div id="custom-date-fields" style="display: none;">
+                <div class="form-group">
+                  <label>From Date (YYYYMMDD)</label>
+                  <input type="text" id="from-date" placeholder="20261112" />
+                </div>
+                <div class="form-group">
+                  <label>To Date (YYYYMMDD)</label>
+                  <input type="text" id="to-date" placeholder="20261112" />
+                </div>
+              </div>
+              <div class="form-group">
+                <label>Exporter Method</label>
+                <select id="exporter-type">
+                  <option value="auto">Auto (Native Excel with fallback to XML Rebuild)</option>
+                  <option value="native">Native Only (Tally direct $$SysName:Excel)</option>
+                  <option value="xmlRebuild">XML Rebuild Only (ExcelJS mimic)</option>
+                </select>
+              </div>
+              <div class="form-group">
+                <label>Voucher Types Filter (comma-separated, empty = all)</label>
+                <input type="text" id="voucher-types" placeholder="e.g. Sales, Receipt, Payment" />
+              </div>
+              <div class="form-group">
+                <label>
+                  <input type="checkbox" id="detailed-flag" style="width: auto;" /> Detailed Mode (Voucher-wise ledger breakdown)
+                </label>
+              </div>
+              <div class="form-group">
+                <label>
+                  <input type="checkbox" id="skip-no-entries" style="width: auto;" /> Skip company attachment if 0 vouchers
+                </label>
+              </div>
+            </div>
+          </div>
+
+          <div>
+            <div class="form-section">
+              <h3>SMTP Configuration</h3>
+              <div class="form-group">
+                <label>SMTP Host</label>
+                <input type="text" id="smtp-host" required />
+              </div>
+              <div class="form-group">
+                <label>SMTP Port</label>
+                <input type="number" id="smtp-port" required />
+              </div>
+              <div class="form-group">
+                <label>
+                  <input type="checkbox" id="smtp-secure" style="width: auto;" /> Secure SSL (Port 465)
+                </label>
+              </div>
+              <div class="form-group">
+                <label>SMTP User / Email</label>
+                <input type="text" id="smtp-user" required />
+              </div>
+              <div class="form-group">
+                <label>SMTP Password / App Password</label>
+                <input type="password" id="smtp-password" placeholder="Leave unchanged to keep existing" />
+                <div class="hint">Stored encrypted at rest with AES-256 machine key.</div>
+              </div>
+              <div class="form-group">
+                <label>From Display Address</label>
+                <input type="text" id="smtp-from" placeholder="Tally DayBook Mailer <noreply@example.com>" />
+              </div>
+            </div>
+
+            <div class="form-section">
+              <h3>Email Recipients & Schedule</h3>
+              <div class="form-group">
+                <label>To Recipients (comma-separated)</label>
+                <input type="text" id="mail-to" required />
+              </div>
+              <div class="form-group">
+                <label>CC Recipients (comma-separated)</label>
+                <input type="text" id="mail-cc" />
+              </div>
+              <div class="form-group">
+                <label>BCC Recipients (comma-separated)</label>
+                <input type="text" id="mail-bcc" />
+              </div>
+              <div class="form-group">
+                <label>Subject Template</label>
+                <input type="text" id="subject-template" required />
+              </div>
+              <div class="form-group">
+                <label>Attachment Mode</label>
+                <select id="attach-mode">
+                  <option value="separate">Separate (.xlsx per company)</option>
+                  <option value="zip">Single Compressed Archive (.zip)</option>
+                </select>
+              </div>
+              <div class="form-group">
+                <label>Schedule Interval (Minutes)</label>
+                <input type="number" id="interval-mins" min="1" max="1440" required />
+              </div>
+            </div>
+          </div>
+        </div>
+
+        <div style="margin-top: 10px; display: flex; justify-content: flex-end;">
+          <button type="submit" class="btn-primary" style="padding: 10px 24px; font-size: 14px;">Save Configuration</button>
+        </div>
+      </form>
+    </div>
+
+    <!-- TAB 3: LOGS -->
+    <div id="tab-logs" class="tab-content">
+      <div style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 12px;">
+        <span style="font-size: 13px; color: var(--text-muted);">Real-time log stream from current day's log file (logs/):</span>
+        <button class="btn-secondary" onclick="fetchLogs()">🔄 Refresh Logs</button>
+      </div>
+      <div class="logs-box" id="logs-container">Loading logs...</div>
+    </div>
+  </div>
+
+  <script>
+    let currentConfig = null;
+
+    function switchTab(tab) {
+      document.querySelectorAll('.tab-btn').forEach(b => b.classList.remove('active'));
+      document.querySelectorAll('.tab-content').forEach(c => c.classList.remove('active'));
+      event.target.classList.add('active');
+      document.getElementById('tab-' + tab).classList.add('active');
+      if (tab === 'logs') fetchLogs();
+    }
+
+    function showAlert(msg, isSuccess = true) {
+      const banner = document.getElementById('alert-banner');
+      banner.className = 'status-alert ' + (isSuccess ? 'alert-success' : 'alert-danger');
+      banner.innerText = msg;
+      banner.style.display = 'block';
+      setTimeout(() => { banner.style.display = 'none'; }, 6000);
+    }
+
+    async function fetchStatus() {
+      try {
+        const res = await fetch('/api/status');
+        const data = await res.json();
+        
+        const badge = document.getElementById('engine-status');
+        if (data.isRunning) {
+          badge.innerHTML = '<span class="badge badge-warn">RUNNING CYCLE</span>';
+        } else {
+          badge.innerHTML = '<span class="badge badge-ok">IDLE (ONLINE)</span>';
+        }
+
+        document.getElementById('interval-display').innerText = data.intervalMinutes + ' min';
+        document.getElementById('last-cycle-time').innerText = data.lastCycleTimestamp ? new Date(data.lastCycleTimestamp).toLocaleTimeString() : 'Never';
+        document.getElementById('next-run-time').innerText = data.nextRun ? new Date(data.nextRun).toLocaleTimeString() : '--';
+
+        const tbody = document.getElementById('company-status-rows');
+        if (data.lastSummary && data.lastSummary.results && data.lastSummary.results.length > 0) {
+          tbody.innerHTML = data.lastSummary.results.map(r => {
+            let bClass = 'badge-ok';
+            if (r.status === 'FAILED') bClass = 'badge-failed';
+            else if (r.status === 'NO ENTRIES' || r.status === 'SKIPPED') bClass = 'badge-warn';
+            
+            return `
+              <tr>
+                <td style="font-weight: 600;">${r.companyName}</td>
+                <td><span class="badge ${bClass}">${r.status}</span></td>
+                <td>${r.periodText || '--'}</td>
+                <td style="font-weight: 600;">${r.voucherCount}</td>
+                <td style="color: var(--text-muted);">${r.generatedAt}</td>
+                <td>${r.error ? '<span style="color: var(--danger);">' + r.error + '</span>' : (r.methodUsed || 'OK')}</td>
+              </tr>
+            `;
+          }).join('');
+        }
+      } catch (err) {
+        console.error('Status fetch error:', err);
+      }
+    }
+
+    async function fetchConfig() {
+      try {
+        const res = await fetch('/api/config');
+        currentConfig = await res.json();
+        
+        document.getElementById('tally-host').value = currentConfig.tally.host;
+        document.getElementById('tally-port').value = currentConfig.tally.port;
+        document.getElementById('companies-list').value = currentConfig.companies === 'auto' ? 'auto' : currentConfig.companies.join(', ');
+        
+        document.getElementById('period-mode').value = currentConfig.dayBook.periodMode;
+        document.getElementById('from-date').value = currentConfig.dayBook.fromDate || '';
+        document.getElementById('to-date').value = currentConfig.dayBook.toDate || '';
+        document.getElementById('exporter-type').value = currentConfig.dayBook.exporter || 'auto';
+        document.getElementById('voucher-types').value = (currentConfig.dayBook.voucherTypes || []).join(', ');
+        document.getElementById('detailed-flag').checked = !!currentConfig.dayBook.detailed;
+        document.getElementById('skip-no-entries').checked = !!currentConfig.dayBook.skipIfNoEntries;
+        
+        document.getElementById('smtp-host').value = currentConfig.smtp.host;
+        document.getElementById('smtp-port').value = currentConfig.smtp.port;
+        document.getElementById('smtp-secure').checked = !!currentConfig.smtp.secure;
+        document.getElementById('smtp-user').value = currentConfig.smtp.user;
+        document.getElementById('smtp-password').value = currentConfig.smtp.password || '';
+        document.getElementById('smtp-from').value = currentConfig.smtp.from || '';
+
+        document.getElementById('mail-to').value = (currentConfig.mail.recipients.to || []).join(', ');
+        document.getElementById('mail-cc').value = (currentConfig.mail.recipients.cc || []).join(', ');
+        document.getElementById('mail-bcc').value = (currentConfig.mail.recipients.bcc || []).join(', ');
+        document.getElementById('subject-template').value = currentConfig.mail.subjectTemplate;
+        document.getElementById('attach-mode').value = currentConfig.attachMode;
+        document.getElementById('interval-mins').value = currentConfig.schedule.intervalMinutes;
+
+        togglePeriodFields();
+      } catch (err) {
+        showAlert('Error loading config: ' + err.message, false);
+      }
+    }
+
+    function togglePeriodFields() {
+      const mode = document.getElementById('period-mode').value;
+      document.getElementById('custom-date-fields').style.display = mode === 'customRange' ? 'block' : 'none';
+    }
+
+    async function saveConfiguration(e) {
+      e.preventDefault();
+      const compVal = document.getElementById('companies-list').value.trim();
+      const companies = compVal.toLowerCase() === 'auto' ? 'auto' : compVal.split(',').map(s => s.trim()).filter(Boolean);
+
+      const vTypes = document.getElementById('voucher-types').value.split(',').map(s => s.trim()).filter(Boolean);
+      const toRecipients = document.getElementById('mail-to').value.split(',').map(s => s.trim()).filter(Boolean);
+      const ccRecipients = document.getElementById('mail-cc').value.split(',').map(s => s.trim()).filter(Boolean);
+      const bccRecipients = document.getElementById('mail-bcc').value.split(',').map(s => s.trim()).filter(Boolean);
+
+      const newConfig = {
+        ...currentConfig,
+        tally: {
+          host: document.getElementById('tally-host').value.trim(),
+          port: parseInt(document.getElementById('tally-port').value, 10),
+          timeoutMs: currentConfig.tally.timeoutMs || 60000,
+        },
+        companies,
+        dayBook: {
+          periodMode: document.getElementById('period-mode').value,
+          fromDate: document.getElementById('from-date').value.trim() || undefined,
+          toDate: document.getElementById('to-date').value.trim() || undefined,
+          voucherTypes: vTypes,
+          detailed: document.getElementById('detailed-flag').checked,
+          skipIfNoEntries: document.getElementById('skip-no-entries').checked,
+          exporter: document.getElementById('exporter-type').value,
+        },
+        smtp: {
+          host: document.getElementById('smtp-host').value.trim(),
+          port: parseInt(document.getElementById('smtp-port').value, 10),
+          secure: document.getElementById('smtp-secure').checked,
+          user: document.getElementById('smtp-user').value.trim(),
+          password: document.getElementById('smtp-password').value,
+          from: document.getElementById('smtp-from').value.trim(),
+        },
+        mail: {
+          recipients: {
+            to: toRecipients,
+            cc: ccRecipients,
+            bcc: bccRecipients,
+          },
+          subjectTemplate: document.getElementById('subject-template').value.trim(),
+        },
+        attachMode: document.getElementById('attach-mode').value,
+        schedule: {
+          ...currentConfig.schedule,
+          intervalMinutes: parseInt(document.getElementById('interval-mins').value, 10),
+        }
+      };
+
+      try {
+        const res = await fetch('/api/config', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify(newConfig),
+        });
+        const data = await res.json();
+        if (data.success) {
+          showAlert('Settings saved successfully!');
+          fetchConfig();
+        } else {
+          showAlert('Save failed: ' + (data.errors ? data.errors.join(', ') : data.error), false);
+        }
+      } catch (err) {
+        showAlert('Save failed: ' + err.message, false);
+      }
+    }
+
+    async function triggerRunNow() {
+      try {
+        const btn = document.getElementById('btn-run-now');
+        btn.disabled = true;
+        btn.innerText = '⏳ Running...';
+
+        const res = await fetch('/api/run-now', { method: 'POST' });
+        const data = await res.json();
+        showAlert(data.message, data.success);
+
+        setTimeout(() => {
+          btn.disabled = false;
+          btn.innerText = '▶ Send Now';
+          fetchStatus();
+        }, 3000);
+      } catch (err) {
+        showAlert('Trigger error: ' + err.message, false);
+      }
+    }
+
+    async function testTally() {
+      try {
+        showAlert('Pinging TallyPrime...', true);
+        const res = await fetch('/api/test-tally');
+        const data = await res.json();
+        if (data.success) {
+          showAlert('Tally Connected! Found ' + data.openCompanies.length + ' open companies: ' + data.openCompanies.join(', '));
+        } else {
+          showAlert(data.error, false);
+        }
+      } catch (err) {
+        showAlert('Tally connection test failed: ' + err.message, false);
+      }
+    }
+
+    async function testMail() {
+      try {
+        showAlert('Testing SMTP connection...', true);
+        const res = await fetch('/api/test-mail', { method: 'POST' });
+        const data = await res.json();
+        showAlert(data.message, data.success);
+      } catch (err) {
+        showAlert('SMTP test failed: ' + err.message, false);
+      }
+    }
+
+    async function fetchLogs() {
+      try {
+        const res = await fetch('/api/logs');
+        const data = await res.json();
+        const box = document.getElementById('logs-container');
+        box.innerText = (data.logs || []).join('\n');
+        box.scrollTop = box.scrollHeight;
+      } catch (err) {
+        console.error('Error fetching logs:', err);
+      }
+    }
+
+    // Auto-refresh status every 5 seconds
+    fetchConfig();
+    fetchStatus();
+    setInterval(fetchStatus, 5000);
+  </script>
+</body>
+</html>
+

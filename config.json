@@ -1,0 +1,54 @@
+{
+  "tally": {
+    "host": "127.0.0.1",
+    "port": 9000,
+    "timeoutMs": 60000
+  },
+  "companies": "auto",
+  "dayBook": {
+    "reportType": "Day Book",
+    "periodMode": "today",
+    "voucherTypes": [],
+    "detailed": true,
+    "skipIfNoEntries": false,
+    "exporter": "auto"
+  },
+  "schedule": {
+    "intervalMinutes": 30,
+    "activeWindow": {
+      "enabled": false,
+      "start": "09:00",
+      "end": "20:00"
+    }
+  },
+  "smtp": {
+    "host": "smtp.gmail.com",
+    "port": 587,
+    "secure": false,
+    "user": "adventsystems.sales6@gmail.com",
+    "password": "",
+    "from": "Tally DayBook Mailer <adventsystems.sales6@gmail.com>"
+  },
+  "mail": {
+    "recipients": {
+      "to": [
+        "accounts@example.com"
+      ],
+      "cc": [],
+      "bcc": []
+    },
+    "subjectTemplate": "Day Book - {CompanyCount} Companies - {dd-MMM-yyyy HH:mm}"
+  },
+  "attachMode": "separate",
+  "keepLocalCopies": {
+    "enabled": true,
+    "outputFolder": "./exports",
+    "retentionDays": 30
+  },
+  "webUi": {
+    "enabled": true,
+    "port": 9095,
+    "host": "127.0.0.1"
+  }
+}
+
