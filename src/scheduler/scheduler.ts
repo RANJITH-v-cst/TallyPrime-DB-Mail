@@ -16,12 +16,16 @@ export class AppScheduler {
   ) {}
 
   public updateConfig(newConfig: AppConfig): void {
-    const intervalChanged = this.config.schedule.intervalMinutes !== newConfig.schedule.intervalMinutes;
+    const scheduleChanged =
+      this.config.schedule.mode !== newConfig.schedule.mode ||
+      this.config.schedule.dailyTime !== newConfig.schedule.dailyTime ||
+      this.config.schedule.intervalMinutes !== newConfig.schedule.intervalMinutes;
+
     this.config = newConfig;
     this.orchestrator.updateConfig(newConfig);
 
-    if (intervalChanged) {
-      logger.info(`Scheduler interval changed to ${newConfig.schedule.intervalMinutes} minutes. Reconfiguring...`);
+    if (scheduleChanged) {
+      logger.info(`Scheduler configuration changed. Reconfiguring scheduler...`);
       this.stop();
       this.start();
     }
@@ -50,34 +54,62 @@ export class AppScheduler {
   }
 
   /**
-   * Starts the scheduler: runs first cycle immediately, then schedules recurring cycles
+   * Starts the scheduler: supports both Daily mode (e.g. 20:00 every night) and Interval mode.
    */
   public async start(): Promise<void> {
     if (this.isShuttingDown) return;
 
-    logger.info(`Starting scheduler (Interval: ${this.config.schedule.intervalMinutes} minutes)`);
+    const schedule = this.config.schedule;
+    const isDaily = (schedule.mode || 'daily') === 'daily';
+    const dailyTime = schedule.dailyTime || '20:00';
 
-    // 1. Run first cycle at startup
-    this.executeProtectedCycle('Startup Cycle');
+    if (isDaily) {
+      const [hStr, mStr] = dailyTime.split(':');
+      const hour = parseInt(hStr || '20', 10);
+      const minute = parseInt(mStr || '0', 10);
+      const cronExpr = `${minute} ${hour} * * *`;
 
-    // 2. Setup safe interval execution
-    const intervalMs = Math.max(1, this.config.schedule.intervalMinutes) * 60 * 1000;
-    this.calculateNextRun(intervalMs);
+      logger.info(`Starting scheduler in DAILY mode: Exports every night at ${dailyTime} (8:00 PM)`);
+      this.calculateNextDailyRun(hour, minute);
 
-    this.intervalTimer = setInterval(async () => {
+      this.cronJob = cron.schedule(cronExpr, async () => {
+        logger.info(`Executing scheduled nightly export cycle at ${dailyTime}...`);
+        await this.executeProtectedCycle('Daily Nightly Export');
+        this.calculateNextDailyRun(hour, minute);
+      });
+    } else {
+      logger.info(`Starting scheduler in INTERVAL mode (Interval: ${schedule.intervalMinutes} minutes)`);
+      const intervalMs = Math.max(1, schedule.intervalMinutes) * 60 * 1000;
       this.calculateNextRun(intervalMs);
-      await this.executeProtectedCycle('Scheduled Interval');
-    }, intervalMs);
+
+      this.intervalTimer = setInterval(async () => {
+        this.calculateNextRun(intervalMs);
+        await this.executeProtectedCycle('Scheduled Interval');
+      }, intervalMs);
+    }
   }
 
   private calculateNextRun(intervalMs: number): void {
     this.nextRunDate = new Date(Date.now() + intervalMs);
   }
 
+  private calculateNextDailyRun(hour: number, minute: number): void {
+    const now = new Date();
+    const next = new Date(now.getFullYear(), now.getMonth(), now.getDate(), hour, minute, 0, 0);
+    if (next.getTime() <= now.getTime()) {
+      next.setDate(next.getDate() + 1); // Tomorrow at specified hour:minute
+    }
+    this.nextRunDate = next;
+  }
+
   /**
    * Executes a cycle with overlap prevention lock and active window verification
    */
-  public async executeProtectedCycle(triggerSource: string, overrideOptions?: { recipients?: string[]; reportType?: string }): Promise<ExportCycleSummary | null> {
+  public async executeProtectedCycle(
+    triggerSource: string,
+    overrideOptions?: { recipients?: string[]; reportType?: string },
+    isManual: boolean = false
+  ): Promise<ExportCycleSummary | null> {
     if (this.isShuttingDown) {
       logger.info(`Skipping cycle (${triggerSource}) due to pending shutdown.`);
       return null;
@@ -88,7 +120,7 @@ export class AppScheduler {
       return null;
     }
 
-    if (!this.isWithinActiveWindow()) {
+    if (!isManual && !this.isWithinActiveWindow()) {
       logger.info(
         `Current time is outside the active schedule window (${this.config.schedule.activeWindow?.start} - ${this.config.schedule.activeWindow?.end}). Skipping cycle.`
       );
@@ -113,7 +145,7 @@ export class AppScheduler {
     if (this.orchestrator.getIsRunning()) {
       throw new Error('An export cycle is currently running. Please wait for it to complete.');
     }
-    const summary = await this.executeProtectedCycle('Manual Web UI Trigger', overrideOptions);
+    const summary = await this.executeProtectedCycle('Manual Web UI Trigger', overrideOptions, true);
     if (!summary) {
       throw new Error('Cycle did not complete (check logs or active window).');
     }

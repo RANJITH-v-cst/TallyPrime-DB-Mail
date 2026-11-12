@@ -26,6 +26,8 @@ export const DEFAULT_CONFIG: AppConfig = {
   },
   exportFolder: getDefaultExportFolder(),
   schedule: {
+    mode: 'daily',
+    dailyTime: '20:00', // Every night at 8:00 PM
     intervalMinutes: 30,
     activeWindow: {
       enabled: false,
@@ -154,6 +156,8 @@ export function mergeConfig(existing: AppConfig, incoming: Partial<AppConfig>): 
     schedule: {
       ...existing.schedule,
       ...(incoming.schedule || {}),
+      mode: incoming.schedule?.mode || existing.schedule?.mode || 'daily',
+      dailyTime: incoming.schedule?.dailyTime || existing.schedule?.dailyTime || '20:00',
       activeWindow: {
         ...(existing.schedule?.activeWindow || { enabled: false, start: '09:00', end: '20:00' }),
         ...(incoming.schedule?.activeWindow || {}),

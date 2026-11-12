@@ -21,7 +21,9 @@ export interface DayBookConfig {
 }
 
 export interface ScheduleConfig {
-  intervalMinutes: number; // default 30
+  mode?: 'daily' | 'interval'; // 'daily' (fixed time e.g. 20:00) or 'interval' (every N minutes)
+  dailyTime?: string;          // HH:mm (default "20:00" = 8:00 PM)
+  intervalMinutes: number;     // default 30 (used when mode = 'interval')
   activeWindow?: {
     enabled: boolean;
     start: string; // HH:mm (e.g. "09:00")

@@ -165,8 +165,8 @@
           <div class="card-val" id="next-run-time" style="font-size: 16px; padding-top: 6px;">--</div>
         </div>
         <div class="card">
-          <div class="card-label">Interval</div>
-          <div class="card-val" id="interval-display" style="font-size: 20px;">30 min</div>
+          <div class="card-label">Schedule Mode</div>
+          <div class="card-val" id="interval-display" style="font-size: 17px; padding-top: 6px;">Daily at 20:00 (8 PM)</div>
         </div>
       </div>
 
@@ -343,8 +343,20 @@
                 </select>
               </div>
               <div class="form-group">
+                <label>Schedule Mode</label>
+                <select id="schedule-mode" onchange="toggleScheduleFields()">
+                  <option value="daily">Daily at 8:00 PM (20:00) (Recommended)</option>
+                  <option value="interval">Interval (Every N minutes)</option>
+                </select>
+              </div>
+              <div id="daily-time-group" class="form-group">
+                <label>Daily Export Time (HH:mm)</label>
+                <input type="text" id="daily-time" placeholder="20:00" />
+                <div class="hint">24-hour format (e.g. 20:00). Exports Day Book for current date every night at 8 o'clock.</div>
+              </div>
+              <div id="interval-mins-group" class="form-group" style="display: none;">
                 <label>Schedule Interval (Minutes)</label>
-                <input type="number" id="interval-mins" min="1" max="1440" required />
+                <input type="number" id="interval-mins" min="1" max="1440" />
               </div>
             </div>
           </div>
@@ -484,7 +496,13 @@
           badge.innerHTML = '<span class="badge badge-ok">IDLE (ONLINE)</span>';
         }
 
-        document.getElementById('interval-display').innerText = data.intervalMinutes + ' min';
+        const sched = data.schedule || {};
+        if (sched.mode === 'daily') {
+          const time = sched.dailyTime || '20:00';
+          document.getElementById('interval-display').innerText = `Daily at ${time} (8 PM)`;
+        } else {
+          document.getElementById('interval-display').innerText = `${data.intervalMinutes || 30} min`;
+        }
         document.getElementById('last-cycle-time').innerText = data.lastCycleTimestamp ? new Date(data.lastCycleTimestamp).toLocaleTimeString() : 'Never';
         document.getElementById('next-run-time').innerText = data.nextRun ? new Date(data.nextRun).toLocaleTimeString() : '--';
 
@@ -564,11 +582,29 @@
 
         document.getElementById('subject-template').value = currentConfig.mail.subjectTemplate;
         document.getElementById('attach-mode').value = currentConfig.attachMode;
-        document.getElementById('interval-mins').value = currentConfig.schedule.intervalMinutes;
+
+        const sched = currentConfig.schedule || {};
+        document.getElementById('schedule-mode').value = sched.mode || 'daily';
+        document.getElementById('daily-time').value = sched.dailyTime || '20:00';
+        document.getElementById('interval-mins').value = sched.intervalMinutes || 30;
 
         togglePeriodFields();
+        toggleScheduleFields();
       } catch (err) {
         showAlert('Error loading config: ' + err.message, false);
+      }
+    }
+
+    function toggleScheduleFields() {
+      const mode = document.getElementById('schedule-mode').value;
+      const dailyGroup = document.getElementById('daily-time-group');
+      const intervalGroup = document.getElementById('interval-mins-group');
+      if (mode === 'daily') {
+        if (dailyGroup) dailyGroup.style.display = 'block';
+        if (intervalGroup) intervalGroup.style.display = 'none';
+      } else {
+        if (dailyGroup) dailyGroup.style.display = 'none';
+        if (intervalGroup) intervalGroup.style.display = 'block';
       }
     }
 
@@ -649,7 +685,9 @@
         attachMode: document.getElementById('attach-mode').value,
         schedule: {
           ...currentConfig.schedule,
-          intervalMinutes: parseInt(document.getElementById('interval-mins').value, 10),
+          mode: document.getElementById('schedule-mode').value,
+          dailyTime: document.getElementById('daily-time').value.trim() || '20:00',
+          intervalMinutes: parseInt(document.getElementById('interval-mins').value, 10) || 30,
         }
       };
 

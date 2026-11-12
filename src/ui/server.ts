@@ -63,6 +63,7 @@ export class WebUiServer {
           port: this.config.tally.port,
         },
         intervalMinutes: this.config.schedule.intervalMinutes,
+        schedule: this.config.schedule,
       });
     });
 

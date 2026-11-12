@@ -92,7 +92,21 @@ describe('Export Flow and TDL Safety Tests', () => {
     expect(voucherXml).not.toContain('[Form:');
     expect(voucherXml).toContain('ADV DayBook Coll');
     expect(voucherXml).toContain('<TYPE>Voucher</TYPE>');
-    expect(voucherXml).toContain('<FETCH>DATE, VOUCHERTYPENAME, VOUCHERNUMBER, PARTYLEDGERNAME, NARRATION, AMOUNT, ALLLEDGERENTRIES.LIST, ALTERID</FETCH>');
+    expect(voucherXml).toContain('<FETCH>DATE, VOUCHERTYPENAME, VOUCHERNUMBER, PARTYLEDGERNAME, NARRATION, AMOUNT, ALLLEDGERENTRIES.LIST, LEDGERENTRIES.LIST, ALLINVENTORYENTRIES.LIST, ALTERID</FETCH>');
+
+    // Standard Day Book Report XML
+    const reportXml = exporter.buildDayBookReportXml({
+      companyName: '`Ranjith Enterprices',
+      config: { detailed: true, periodMode: 'today', voucherTypes: [], skipIfNoEntries: false, exporter: 'xmlRebuild' },
+      fromDate: '20261112',
+      toDate: '20261112',
+    });
+    expect(reportXml).toContain('<ID>Day Book</ID>');
+    expect(reportXml).toContain('<TYPE>Data</TYPE>');
+    expect(reportXml).toContain('<SVEXPORTFORMAT>$$SysName:XML</SVEXPORTFORMAT>');
+    expect(reportXml).toContain('<EXPLODEFLAG>Yes</EXPLODEFLAG>');
+    expect(reportXml).toContain('<SVCURRENTCOMPANY>`Ranjith Enterprices</SVCURRENTCOMPANY>');
+    expect(reportXml).not.toContain('Part:DB Body');
 
     // Discovery XML
     const discoveryXml = discovery.buildDiscoveryXml();
@@ -141,5 +155,82 @@ describe('Export Flow and TDL Safety Tests', () => {
     expect(cycleResults.length).toBe(1);
     expect(cycleResults[0].fileName).toBe(currentFileName);
     expect(cycleResults[0].fileBuffer?.toString()).toBe('PK mock excel buffer');
+  });
+
+  // Test 5: Real Tally DayBook.xml fixture parsing (multi-voucher with GST and inventory)
+  test('5. Real Tally DayBook.xml fixture parses all vouchers and ledger lines accurately', async () => {
+    const fixturePath = path.resolve(process.cwd(), 'test/fixtures/DayBook.xml');
+    expect(fs.existsSync(fixturePath)).toBe(true);
+
+    const xml = fs.readFileSync(fixturePath, 'utf8');
+    const mockTally = new TallyClient({ host: '127.0.0.1', port: 9000 });
+    const exporter = new XmlRebuildExporter(mockTally);
+
+    const vouchers = exporter.parseVouchers(xml);
+    expect(vouchers.length).toBe(2);
+
+    // Voucher 1: Payment to S3 Mobiles for 5,000
+    const v1 = vouchers[0];
+    expect(v1.voucherType).toBe('Payment');
+    expect(v1.voucherNumber).toBe('171');
+    expect(v1.partyLedgerName).toBe('S3 Mobiles');
+    expect(v1.amount).toBe(5000);
+    expect(v1.ledgerEntries?.length).toBe(2);
+    expect(v1.ledgerEntries?.[0].ledgerName).toBe('S3 Mobiles');
+    expect(v1.ledgerEntries?.[0].isDeemedPositive).toBe(true); // Debit
+    expect(v1.ledgerEntries?.[1].ledgerName).toBe('City Union Bank Ltd, Clean OD A/C 153081');
+    expect(v1.ledgerEntries?.[1].isDeemedPositive).toBe(false); // Credit
+
+    // Voucher 2: GST SALES to 4S Mobile for 640,200
+    const v2 = vouchers[1];
+    expect(v2.voucherType).toBe('GST SALES');
+    expect(v2.voucherNumber).toBe('SC22902260000412');
+    expect(v2.partyLedgerName).toBe('4S Mobile');
+    expect(v2.amount).toBe(640200);
+    expect(v2.ledgerEntries?.length).toBe(5);
+
+    const ledgerNames = v2.ledgerEntries?.map((l) => l.ledgerName);
+    expect(ledgerNames).toContain('4S Mobile');
+    expect(ledgerNames).toContain('GST SALES');
+    expect(ledgerNames).toContain('CGST Collected @ 9%');
+    expect(ledgerNames).toContain('SGST Collected @ 9%');
+    expect(ledgerNames).toContain('Round Off');
+
+    // Build Excel workbook and verify Buffer
+    const excelBuffer = await exporter.buildExcelWorkbook({
+      companyName: '`Ranjith Enterprices',
+      config: { detailed: true, periodMode: 'today', voucherTypes: [], skipIfNoEntries: false, exporter: 'xmlRebuild' },
+      fromDate: '20261112',
+      toDate: '20261112',
+    }, vouchers);
+
+    expect(excelBuffer).toBeDefined();
+    expect(excelBuffer.length).toBeGreaterThan(1000);
+    // Excel file magic bytes: PK (0x50, 0x4B)
+    expect(excelBuffer[0]).toBe(0x50);
+    expect(excelBuffer[1]).toBe(0x4B);
+  });
+
+  // Test 6: Empty Tally XML or 0 vouchers produces clean empty message without ghost rows
+  test('6. Empty Tally XML produces clean empty message and never ghost rows', async () => {
+    const mockTally = new TallyClient({ host: '127.0.0.1', port: 9000 });
+    const exporter = new XmlRebuildExporter(mockTally);
+
+    // Empty XML or XML with empty placeholder voucher
+    const dummyXml = `<ENVELOPE><BODY><DATA><COLLECTION><VOUCHER></VOUCHER></COLLECTION></DATA></BODY></ENVELOPE>`;
+    const vouchers = exporter.parseVouchers(dummyXml);
+    expect(vouchers.length).toBe(0);
+
+    const excelBuffer = await exporter.buildExcelWorkbook({
+      companyName: '`Ranjith Enterprices',
+      config: { detailed: true, periodMode: 'today', voucherTypes: [], skipIfNoEntries: false, exporter: 'xmlRebuild' },
+      fromDate: '20261112',
+      toDate: '20261112',
+    }, vouchers);
+
+    expect(excelBuffer).toBeDefined();
+    expect(excelBuffer.length).toBeGreaterThan(500);
+    expect(excelBuffer[0]).toBe(0x50);
+    expect(excelBuffer[1]).toBe(0x4B);
   });
 });

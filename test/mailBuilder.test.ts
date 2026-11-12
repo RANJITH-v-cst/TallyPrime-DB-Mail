@@ -45,9 +45,7 @@ describe('Mail Builder & Templates Unit Tests', () => {
       ],
       emailSent: false,
     };
-
     const html = buildExportEmailHtml(summary, 'today');
-
     expect(html).toContain('Acme Corp');
     expect(html).toContain('Starlight Ltd');
     expect(html).toContain('Apex Logistics');
@@ -57,14 +55,12 @@ describe('Mail Builder & Templates Unit Tests', () => {
     expect(html).toMatch(/NO ENTRIES/);
     expect(html).toContain('Total Companies:</span><span class="stat-val">3</span>');
   });
-
   test('should build alert email with warning header and error details', () => {
     const html = buildAlertEmailHtml(
       'TallyPrime Disconnected Alert',
       'Port 9000 is closed or Tally is not running.',
       'ECONNREFUSED 127.0.0.1:9000'
     );
-
     expect(html).toContain('TallyPrime Disconnected Alert');
     expect(html).toContain('Port 9000 is closed');
     expect(html).toContain('ECONNREFUSED 127.0.0.1:9000');
