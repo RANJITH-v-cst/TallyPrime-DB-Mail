@@ -22,7 +22,9 @@ export class CompanyDiscoveryService {
   }
 
   /**
-   * Builds Step 1 Tally XML request for open companies collection
+   * Builds Step 1 Tally XML request for open companies collection.
+   * Uses uniquely prefixed collection name "ADV Company Coll" with FETCH Name
+   * to guarantee no collision with Form:Company or default Tally UI reports.
    */
   public buildDiscoveryXml(): string {
     return `<ENVELOPE>
@@ -30,13 +32,21 @@ export class CompanyDiscoveryService {
   <VERSION>1</VERSION>
   <TALLYREQUEST>Export</TALLYREQUEST>
   <TYPE>Collection</TYPE>
-  <ID>List of Companies</ID>
+  <ID>ADV Company Coll</ID>
  </HEADER>
  <BODY>
   <DESC>
    <STATICVARIABLES>
     <SVEXPORTFORMAT>$$SysName:XML</SVEXPORTFORMAT>
    </STATICVARIABLES>
+   <TDL>
+    <TDLMESSAGE>
+     <COLLECTION NAME="ADV Company Coll" ISMODIFY="No" ISFIXED="No">
+      <TYPE>Company</TYPE>
+      <FETCH>Name</FETCH>
+     </COLLECTION>
+    </TDLMESSAGE>
+   </TDL>
   </DESC>
  </BODY>
 </ENVELOPE>`;

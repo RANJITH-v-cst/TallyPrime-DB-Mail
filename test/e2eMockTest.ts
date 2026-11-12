@@ -15,7 +15,7 @@ async function runEndToEndVerification() {
   console.log('🚀 STARTING TALLYDAYBOOKMAILER END-TO-END MOCK SERVER TEST');
   console.log('============================================================\n');
 
-  const PORT = 9000;
+  const PORT = 19000;
   const mockServer = await startMockTallyServer(PORT, 'native');
 
   try {
@@ -145,6 +145,7 @@ async function runEndToEndVerification() {
         recipients: { to: ['accounts@example.com'] },
         subjectTemplate: 'Day Book - {CompanyCount} Companies - {dd-MMM-yyyy HH:mm}',
       },
+      exportFolder: './exports_test',
       attachMode: 'separate',
       keepLocalCopies: {
         enabled: true,

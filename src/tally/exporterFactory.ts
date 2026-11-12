@@ -18,31 +18,22 @@ export class ExporterFactory {
    * with seamless automatic fallback.
    */
   public async export(options: ExportOptions): Promise<ExporterResult & { methodUsed: 'native' | 'xmlRebuild' }> {
-    const preference = options.config.exporter || 'auto';
+    const preference = options.config.exporter || 'xmlRebuild';
 
     if (preference === 'native') {
-      const res = await this.nativeExporter.exportDayBook(options);
-      return { ...res, methodUsed: 'native' };
+      logger.info(`[Native-Mode] Trying NativeExcelExporter for "${options.companyName}"...`);
+      const nativeRes = await this.nativeExporter.exportDayBook(options);
+      if (nativeRes.success && nativeRes.fileBuffer) {
+        return { ...nativeRes, methodUsed: 'native' };
+      }
+      logger.warn(`Native export did not return valid Excel for "${options.companyName}". Falling back to XmlRebuildExporter...`);
+      const fallbackRes = await this.xmlRebuildExporter.exportDayBook(options);
+      return { ...fallbackRes, methodUsed: 'xmlRebuild' };
     }
 
-    if (preference === 'xmlRebuild') {
-      const res = await this.xmlRebuildExporter.exportDayBook(options);
-      return { ...res, methodUsed: 'xmlRebuild' };
-    }
-
-    // Default: 'auto' (Try Native first, fallback to XmlRebuild)
-    logger.info(`[Auto-Mode] Trying NativeExcelExporter for "${options.companyName}"...`);
-    const nativeRes = await this.nativeExporter.exportDayBook(options);
-
-    if (nativeRes.success && nativeRes.fileBuffer) {
-      return { ...nativeRes, methodUsed: 'native' };
-    }
-
-    logger.warn(
-      `Native export did not return valid Excel for "${options.companyName}". Activating fallback XmlRebuildExporter...`
-    );
-    const rebuildRes = await this.xmlRebuildExporter.exportDayBook(options);
-    return { ...rebuildRes, methodUsed: 'xmlRebuild' };
+    // Default: 'xmlRebuild' (Builds clean ExcelJS Day Book from XML Collection query)
+    const res = await this.xmlRebuildExporter.exportDayBook(options);
+    return { ...res, methodUsed: 'xmlRebuild' };
   }
 
   public getNativeExporter(): NativeExcelExporter {

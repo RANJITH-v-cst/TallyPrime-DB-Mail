@@ -70,6 +70,7 @@ export interface AppConfig {
   attachMode: AttachMode;
   keepLocalCopies: LocalCopiesConfig;
   webUi: WebUiConfig;
+  exportFolder?: string; // Common folder for exports (default: Desktop\Advent DB Export)
 }
 
 export interface CompanyState {

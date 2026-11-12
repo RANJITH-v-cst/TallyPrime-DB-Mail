@@ -178,12 +178,13 @@
               <th>Status</th>
               <th>Period</th>
               <th>Vouchers</th>
+              <th>Saved File</th>
               <th>Last Generated</th>
               <th>Details</th>
             </tr>
           </thead>
           <tbody id="company-status-rows">
-            <tr><td colspan="6" style="text-align: center; color: var(--text-muted);">No runs recorded yet. Click "Send Now" to start first cycle.</td></tr>
+            <tr><td colspan="7" style="text-align: center; color: var(--text-muted);">No runs recorded yet. Click "Send Now" to start first cycle.</td></tr>
           </tbody>
         </table>
       </div>
@@ -253,6 +254,18 @@
                 <label>
                   <input type="checkbox" id="skip-no-entries" style="width: auto;" /> Skip company attachment if 0 vouchers
                 </label>
+              </div>
+            </div>
+
+            <div class="form-section">
+              <h3>Export Destination & Folder</h3>
+              <div class="form-group">
+                <label>Common Export Folder</label>
+                <div style="display: flex; gap: 8px;">
+                  <input type="text" id="export-folder" placeholder="Desktop\Advent DB Export" style="flex: 1;" />
+                  <button type="button" class="btn-secondary" onclick="openExportFolder()" style="white-space: nowrap; padding: 6px 12px; font-size: 12px;">📂 Open Folder</button>
+                </div>
+                <div class="hint">Excel files are saved here first before being emailed. Defaults to &lt;Desktop&gt;\Advent DB Export.</div>
               </div>
             </div>
           </div>
@@ -488,6 +501,7 @@
                 <td><span class="badge ${bClass}">${r.status}</span></td>
                 <td>${r.periodText || '--'}</td>
                 <td style="font-weight: 600;">${r.voucherCount}</td>
+                <td style="font-size: 11px; font-family: monospace; color: #1e3a8a;">${r.fileName || '--'}</td>
                 <td style="color: var(--text-muted);">${r.generatedAt}</td>
                 <td>${r.error ? '<span style="color: var(--danger);">' + r.error + '</span>' : (r.methodUsed || 'OK')}</td>
               </tr>
@@ -515,6 +529,7 @@
         document.getElementById('voucher-types').value = (currentConfig.dayBook.voucherTypes || []).join(', ');
         document.getElementById('detailed-flag').checked = !!currentConfig.dayBook.detailed;
         document.getElementById('skip-no-entries').checked = !!currentConfig.dayBook.skipIfNoEntries;
+        document.getElementById('export-folder').value = currentConfig.exportFolder || '';
         
         document.getElementById('smtp-host').value = currentConfig.smtp.host;
         document.getElementById('smtp-port').value = currentConfig.smtp.port;
@@ -604,6 +619,7 @@
           timeoutMs: currentConfig.tally?.timeoutMs || 60000,
         },
         companies,
+        exportFolder: document.getElementById('export-folder')?.value?.trim() || undefined,
         dayBook: {
           reportType: document.getElementById('quick-report-type')?.value || currentConfig.dayBook?.reportType || 'Day Book',
           periodMode: document.getElementById('period-mode').value,
@@ -716,16 +732,32 @@
 
     async function testTally() {
       try {
-        showAlert('Pinging TallyPrime...', true);
+        showAlert('Pinging TallyPrime and verifying export folder...', true);
         const res = await fetch('/api/test-tally');
         const data = await res.json();
         if (data.success) {
-          showAlert('Tally Connected! Found ' + data.openCompanies.length + ' open companies: ' + data.openCompanies.join(', '));
+          const folderStatus = data.exportFolder ? ` | Common Folder: ${data.exportFolder} (Writable: ${data.isFolderWritable ? 'YES' : 'NO'}${data.isFolderFallback ? ' - Fallback' : ''})` : '';
+          showAlert(`Tally Prime Connected! Found ${data.openCompanies.length} open tab(s): [${data.openCompanies.join(', ')}]${folderStatus}`, true);
         } else {
-          showAlert(data.error, false);
+          const folderStatus = data.exportFolder ? ` | Folder: ${data.exportFolder} (Writable: ${data.isFolderWritable ? 'YES' : 'NO'})` : '';
+          showAlert((data.error || 'Connection failed') + folderStatus, false);
         }
       } catch (err) {
         showAlert('Tally connection test failed: ' + err.message, false);
+      }
+    }
+
+    async function openExportFolder() {
+      try {
+        const res = await fetch('/api/open-folder', { method: 'POST' });
+        const data = await res.json();
+        if (data.success) {
+          showAlert(`Opened export folder: ${data.folderPath}`, true);
+        } else {
+          showAlert(`Could not open export folder: ${data.error}`, false);
+        }
+      } catch (err) {
+        showAlert(`Error opening export folder: ${err.message}`, false);
       }
     }
 

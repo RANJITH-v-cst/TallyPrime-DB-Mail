@@ -19,12 +19,15 @@ export class MailerService {
   }
 
   public initTransporter(config: AppConfig): void {
-    const password = getDecryptedSmtpPassword(config);
+    const rawPassword = getDecryptedSmtpPassword(config);
+    // Strip whitespace from passwords (e.g. Gmail 16-character app passwords like "abcd efgh ijkl mnop")
+    const password = rawPassword ? rawPassword.replace(/\s+/g, '') : '';
+
     this.transporter = nodemailer.createTransport({
       host: config.smtp.host,
       port: config.smtp.port,
       secure: config.smtp.secure, // true for 465, false for other ports
-      auth: config.smtp.user ? {
+      auth: (config.smtp.user && password) ? {
         user: config.smtp.user,
         pass: password,
       } : undefined,
@@ -41,6 +44,13 @@ export class MailerService {
     if (!this.transporter) {
       return { success: false, message: 'Mailer transporter not initialized' };
     }
+    const rawPassword = getDecryptedSmtpPassword(this.config);
+    if (this.config.smtp.user && !rawPassword) {
+      return {
+        success: false,
+        message: 'SMTP Password is missing. Please enter your App Password in Settings.',
+      };
+    }
     try {
       await this.transporter.verify();
       return { success: true, message: 'SMTP server connection and credentials verified successfully!' };
@@ -56,6 +66,13 @@ export class MailerService {
   public async sendTestEmail(toRecipients: string[]): Promise<{ success: boolean; message: string }> {
     if (!this.transporter) {
       return { success: false, message: 'SMTP Transporter not initialized.' };
+    }
+    const rawPassword = getDecryptedSmtpPassword(this.config);
+    if (this.config.smtp.user && !rawPassword) {
+      return {
+        success: false,
+        message: 'SMTP Password is missing. Please enter your App Password in Settings.',
+      };
     }
 
     try {

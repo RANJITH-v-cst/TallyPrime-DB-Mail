@@ -1,9 +1,11 @@
 import express, { Request, Response } from 'express';
 import * as path from 'path';
 import * as fs from 'fs';
+import { exec } from 'child_process';
 import { AppConfig } from '../config/types';
 import { loadConfig, saveConfig, validateConfig, mergeConfig } from '../config/config';
 import { parseEmailList, validateEmailList } from '../utils/emailValidator';
+import { resolveAndEnsureFolder } from '../utils/folderHelper';
 import { MailerService } from '../mailer/mailer';
 import { AppScheduler } from '../scheduler/scheduler';
 import { ExportOrchestrator } from '../scheduler/orchestrator';
@@ -211,23 +213,44 @@ export class WebUiServer {
       }
     });
 
-    // API: Test Tally Connection & Discover Companies
+    // API: Test Tally Connection & Discover Companies (also verifies common export folder)
     this.app.get('/api/test-tally', async (req: Request, res: Response) => {
       try {
         const discovery = this.orchestrator.getDiscoveryService();
         const result = await discovery.discoverCompanies(this.config.companies);
+        const folderInfo = resolveAndEnsureFolder(this.config.exportFolder);
         res.json({
           success: true,
           openCompanies: result.openCompanies,
           missingCompanies: result.missingCompanies,
           configuredCompanies: result.configuredCompanies,
           isMatch: result.isMatch,
+          exportFolder: folderInfo.folderPath,
+          isFolderWritable: folderInfo.isWritable,
+          isFolderFallback: folderInfo.isFallback,
         });
       } catch (err: any) {
+        const folderInfo = resolveAndEnsureFolder(this.config.exportFolder);
         res.status(500).json({
           success: false,
           error: `Could not connect to TallyPrime at ${this.config.tally.host}:${this.config.tally.port}: ${err.message}`,
+          exportFolder: folderInfo.folderPath,
+          isFolderWritable: folderInfo.isWritable,
         });
+      }
+    });
+
+    // API: Open Common Export Folder in Windows File Explorer
+    this.app.post('/api/open-folder', (req: Request, res: Response) => {
+      try {
+        const folderInfo = resolveAndEnsureFolder(this.config.exportFolder);
+        const folderPath = folderInfo.folderPath;
+        if (process.platform === 'win32') {
+          exec(`explorer.exe "${folderPath}"`);
+        }
+        res.json({ success: true, folderPath });
+      } catch (err: any) {
+        res.status(500).json({ success: false, error: err.message });
       }
     });
 

@@ -23,10 +23,10 @@ describe('Recipient Email Parser & Validator Unit Tests', () => {
     });
 
     test('should de-duplicate addresses case-insensitively', () => {
-      const raw = 'sales@company.com, SALES@company.com, Sales@Company.com, info@company.com';
+      const raw = 'adventsystems.sales6@gmail.com, SALES@company.com, Sales@Company.com, info@company.com';
       const parsed = parseEmailList(raw);
-      expect(parsed).toHaveLength(2);
-      expect(parsed).toEqual(['sales@company.com', 'info@company.com']);
+      expect(parsed).toHaveLength(3);
+      expect(parsed).toEqual(['adventsystems.sales6@gmail.com', 'SALES@company.com', 'info@company.com']);
     });
 
     test('should handle arrays, empty strings, and undefined gracefully', () => {

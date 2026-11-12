@@ -30,10 +30,10 @@ describe('Filename Sanitizer Unit Tests', () => {
     expect(clean.length).toBeLessThanOrEqual(120);
   });
 
-  test('buildExportFileName should format as <Company>_DayBook_<yyyyMMdd_HHmm>.xlsx', () => {
-    const testDate = new Date(2026, 10, 12, 14, 30); // 12 Nov 2026 14:30
+  test('buildExportFileName should format as <Company>_DayBook_<yyyyMMdd_HHmmss>.xlsx', () => {
+    const testDate = new Date(2026, 10, 12, 14, 30, 0); // 12 Nov 2026 14:30:00
     const fileName = buildExportFileName('Starlight & Sons: Pvt. Ltd.', testDate);
-    expect(fileName).toBe('Starlight & Sons_ Pvt. Ltd_DayBook_20261112_1430.xlsx');
+    expect(fileName).toBe('Starlight & Sons_ Pvt. Ltd_DayBook_20261112_143000.xlsx');
     expect(fileName.endsWith('.xlsx')).toBe(true);
   });
 });

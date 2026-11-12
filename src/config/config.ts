@@ -3,6 +3,7 @@ import * as path from 'path';
 import { AppConfig } from './types';
 import { encryptPassword, decryptPassword } from '../utils/crypto';
 import { parseEmailList, validateEmailList } from '../utils/emailValidator';
+import { getDefaultExportFolder } from '../utils/folderHelper';
 import { logger } from '../utils/logger';
 
 const CONFIG_PATH = path.resolve(process.cwd(), 'config.json');
@@ -21,8 +22,9 @@ export const DEFAULT_CONFIG: AppConfig = {
     voucherTypes: [],
     detailed: true,
     skipIfNoEntries: false,
-    exporter: 'auto',
+    exporter: 'xmlRebuild', // Default: xmlRebuild (Native stays only as optional setting)
   },
+  exportFolder: getDefaultExportFolder(),
   schedule: {
     intervalMinutes: 30,
     activeWindow: {
@@ -184,6 +186,7 @@ export function mergeConfig(existing: AppConfig, incoming: Partial<AppConfig>): 
       ...existing.webUi,
       ...(incoming.webUi || {}),
     },
+    exportFolder: incoming.exportFolder !== undefined ? incoming.exportFolder : existing.exportFolder,
   };
 
   // Password preservation:
@@ -195,8 +198,9 @@ export function mergeConfig(existing: AppConfig, incoming: Partial<AppConfig>): 
   if (!incomingPass || incomingPass === '********' || incomingPass.startsWith('****')) {
     merged.smtp.password = existing.smtp.password;
   } else if (!incomingPass.startsWith('enc:')) {
-    // Re-encrypt newly entered real password
-    merged.smtp.password = encryptPassword(incomingPass);
+    // Re-encrypt newly entered real password (strips spaces in case of Gmail app passwords like "abcd efgh ijkl mnop")
+    const cleanPass = incomingPass.replace(/\s+/g, '');
+    merged.smtp.password = encryptPassword(cleanPass);
   } else {
     merged.smtp.password = incomingPass;
   }

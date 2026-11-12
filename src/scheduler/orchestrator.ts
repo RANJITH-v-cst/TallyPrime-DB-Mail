@@ -3,6 +3,7 @@ import * as path from 'path';
 import { AppConfig, CompanyExportResult, ExportCycleSummary } from '../config/types';
 import { loadConfig } from '../config/config';
 import { parseEmailList } from '../utils/emailValidator';
+import { resolveAndEnsureFolder, saveFileWithLockProtection, cleanOldExports } from '../utils/folderHelper';
 import { TallyClient } from '../tally/client';
 import { CompanyDiscoveryService } from '../tally/companyDiscovery';
 import { ExporterFactory } from '../tally/exporterFactory';
@@ -127,6 +128,11 @@ export class ExportOrchestrator {
         logger.warn('No open companies found in TallyPrime. Nothing to export.');
       }
 
+      // Ensure common export folder exists and is writable
+      const folderInfo = resolveAndEnsureFolder(this.config.exportFolder);
+      const exportFolder = folderInfo.folderPath;
+      logger.info(`Common export folder: "${exportFolder}" (Writable: ${folderInfo.isWritable}, Fallback: ${folderInfo.isFallback})`);
+
       // Determine reports to export: 'Day Book', 'Balance Sheet', or both
       const reportsToExport = activeReportType === 'Both' ? ['Day Book', 'Balance Sheet'] : [activeReportType];
 
@@ -151,15 +157,20 @@ export class ExportOrchestrator {
 
         // Export each requested report for this company
         for (const rep of reportsToExport) {
-          const result = await this.exportSingleCompany(company, cycleDateStr, rep);
+          const result = await this.exportSingleCompany(company, cycleDateStr, rep, exportFolder);
           results.push(result);
         }
       }
 
-      // Save local copies and retention cleanup
-      if (this.config.keepLocalCopies.enabled) {
-        this.saveLocalCopies(results);
-        this.cleanOldLocalCopies();
+      // Collect files created in THIS cycle directly from the folder
+      for (const r of results) {
+        if (r.status === 'OK' && r.filePath && fs.existsSync(r.filePath)) {
+          try {
+            r.fileBuffer = fs.readFileSync(r.filePath);
+          } catch (e: any) {
+            logger.warn(`Could not read file from folder for attachment "${r.filePath}": ${e.message}`);
+          }
+        }
       }
 
       // Build summary
@@ -211,6 +222,9 @@ export class ExportOrchestrator {
       summary.emailSent = emailSent;
       this.stateManager.setLastCycleTime(completedTime.toISOString());
 
+      // Retention cleanup strictly inside common export folder
+      cleanOldExports(exportFolder, this.config.keepLocalCopies?.retentionDays || 30);
+
       logger.info('=====================================================');
       logger.info(`Export cycle finished in ${((completedTime.getTime() - startTime.getTime()) / 1000).toFixed(1)}s (Success: ${successCount}, Failed: ${failedCount}, Skipped: ${skippedCount})`);
       logger.info('=====================================================');
@@ -223,8 +237,14 @@ export class ExportOrchestrator {
 
   /**
    * Exports Day Book / Balance Sheet for a single company with period and state handling
+   * and saves the file atomically to the common export folder with lock protection.
    */
-  private async exportSingleCompany(companyName: string, todayStr: string, reportName: string = 'Day Book'): Promise<CompanyExportResult> {
+  private async exportSingleCompany(
+    companyName: string,
+    todayStr: string,
+    reportName: string = 'Day Book',
+    exportFolder: string = './exports'
+  ): Promise<CompanyExportResult> {
     const compState = this.stateManager.getCompanyState(companyName);
     const periodMode = this.config.dayBook.periodMode;
 
@@ -318,11 +338,13 @@ export class ExportOrchestrator {
       });
 
       const fileName = buildExportFileName(companyName, new Date(), reportName);
+      const savedInfo = saveFileWithLockProtection(exportFolder, fileName, exportRes.fileBuffer);
 
       return {
         companyName: displayName,
         status: 'OK',
-        fileName,
+        fileName: savedInfo.fileName,
+        filePath: savedInfo.filePath,
         fileBuffer: exportRes.fileBuffer,
         voucherCount: exportRes.voucherCount,
         newOrAlteredCount: exportRes.newOrAlteredCount,

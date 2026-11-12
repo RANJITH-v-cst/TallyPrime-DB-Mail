@@ -20,27 +20,18 @@ export class XmlRebuildExporter implements IExporter {
 
   /**
    * Builds Tally Collection XML to fetch Vouchers with all required fields
+   * Uses uniquely prefixed collection name "ADV DayBook Coll" to never conflict
+   * with default Tally screens or parts.
    */
   public buildVoucherFetchXml(options: ExportOptions): string {
     const { companyName, config, fromDate, toDate } = options;
 
-    let voucherTypeFilter = '';
-    if (config.voucherTypes && config.voucherTypes.length > 0) {
-      const typesConditions = config.voucherTypes
-        .map((t) => `$VOUCHERTYPENAME = "${t}"`)
-        .join(' OR ');
-      voucherTypeFilter = `    <STATICVARIABLES>
-      <VOUCHERTYPENAME>${config.voucherTypes[0]}</VOUCHERTYPENAME>
-    </STATICVARIABLES>`;
-    }
-
-    // Direct Tally Request for Vouchers Collection
     return `<ENVELOPE>
  <HEADER>
   <VERSION>1</VERSION>
   <TALLYREQUEST>Export</TALLYREQUEST>
   <TYPE>Collection</TYPE>
-  <ID>DayBookVoucherColl</ID>
+  <ID>ADV DayBook Coll</ID>
  </HEADER>
  <BODY>
   <DESC>
@@ -52,9 +43,9 @@ export class XmlRebuildExporter implements IExporter {
    </STATICVARIABLES>
    <TDL>
     <TDLMESSAGE>
-     <COLLECTION NAME="DayBookVoucherColl" ISMODIFY="No" ISFIXED="No">
+     <COLLECTION NAME="ADV DayBook Coll" ISMODIFY="No" ISFIXED="No">
       <TYPE>Voucher</TYPE>
-      <FETCH>DATE, VOUCHERTYPENAME, VOUCHERNUMBER, PARTYLEDGERNAME, NARRATION, AMOUNT, ALTERID, MASTERID, ALLLEDGERENTRIES.LIST</FETCH>
+      <FETCH>DATE, VOUCHERTYPENAME, VOUCHERNUMBER, PARTYLEDGERNAME, NARRATION, AMOUNT, ALLLEDGERENTRIES.LIST, ALTERID</FETCH>
      </COLLECTION>
     </TDLMESSAGE>
    </TDL>

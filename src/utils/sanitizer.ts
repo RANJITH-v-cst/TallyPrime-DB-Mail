@@ -42,7 +42,7 @@ export function sanitizeFilename(name: string, replacement: string = '_'): strin
 
 /**
  * Builds standard Day Book / Balance Sheet export filename:
- * <CompanyName>_<ReportName>_<yyyyMMdd_HHmm>.xlsx
+ * <CompanyName>_<ReportName>_<yyyyMMdd_HHmmss>.xlsx
  */
 export function buildExportFileName(companyName: string, date: Date = new Date(), reportName: string = 'DayBook'): string {
   const sanitizedCompany = sanitizeFilename(companyName);
@@ -54,8 +54,9 @@ export function buildExportFileName(companyName: string, date: Date = new Date()
   const dd = pad(date.getDate());
   const HH = pad(date.getHours());
   const mm = pad(date.getMinutes());
+  const ss = pad(date.getSeconds());
 
-  const timestamp = `${yyyy}${MM}${dd}_${HH}${mm}`;
+  const timestamp = `${yyyy}${MM}${dd}_${HH}${mm}${ss}`;
   return `${sanitizedCompany}_${cleanReportName}_${timestamp}.xlsx`;
 }
 

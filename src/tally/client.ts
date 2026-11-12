@@ -23,7 +23,8 @@ export class TallyClient {
   }
 
   /**
-   * Checks if TallyPrime is reachable using the standard List of Companies collection.
+   * Checks if TallyPrime is reachable using an isolated Company collection with FETCH.
+   * Completely avoids Form:Company "No PARTS" UI errors.
    */
   async ping(): Promise<boolean> {
     try {
@@ -32,13 +33,21 @@ export class TallyClient {
   <VERSION>1</VERSION>
   <TALLYREQUEST>Export</TALLYREQUEST>
   <TYPE>Collection</TYPE>
-  <ID>List of Companies</ID>
+  <ID>ADV Company Coll</ID>
  </HEADER>
  <BODY>
   <DESC>
    <STATICVARIABLES>
     <SVEXPORTFORMAT>$$SysName:XML</SVEXPORTFORMAT>
    </STATICVARIABLES>
+   <TDL>
+    <TDLMESSAGE>
+     <COLLECTION NAME="ADV Company Coll" ISMODIFY="No" ISFIXED="No">
+      <TYPE>Company</TYPE>
+      <FETCH>Name</FETCH>
+     </COLLECTION>
+    </TDLMESSAGE>
+   </TDL>
   </DESC>
  </BODY>
 </ENVELOPE>`;

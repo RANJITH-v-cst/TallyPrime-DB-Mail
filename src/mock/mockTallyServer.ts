@@ -137,8 +137,8 @@ export function startMockTallyServer(port = PORT, mode: 'native' | 'fallback_xml
       });
 
       req.on('end', async () => {
-        // 1. Step 1: List of Companies Collection
-        if (body.includes('List of Companies')) {
+        // 1. Step 1: Open Companies Collection
+        if (body.includes('List of Companies') || body.includes('ADV Company Coll') || body.includes('<TYPE>Company</TYPE>')) {
           const companiesXml = `<?xml version="1.0" encoding="utf-8"?>
 <ENVELOPE>
  <HEADER><VERSION>1</VERSION><STATUS>1</STATUS></HEADER>
