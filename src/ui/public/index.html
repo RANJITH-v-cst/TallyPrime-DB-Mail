@@ -100,7 +100,7 @@
       <div class="header-actions">
         <button class="btn-secondary" onclick="testTally()">Test Tally</button>
         <button class="btn-secondary" onclick="testMail()">Test Mail</button>
-        <button class="btn-primary" id="btn-run-now" onclick="triggerRunNow()">▶ Send Now</button>
+        <button class="btn-primary" id="btn-run-now" onclick="triggerQuickSend()">▶ Send Now</button>
       </div>
     </header>
 
@@ -126,7 +126,7 @@
           <span class="badge badge-ok" style="font-size: 12px; padding: 4px 10px;">Ready</span>
         </div>
 
-        <div style="display: grid; grid-template-columns: 2fr 1fr; gap: 14px; margin-bottom: 12px;">
+        <div style="display: grid; grid-template-columns: 2fr 1fr; gap: 14px; margin-bottom: 14px;">
           <div>
             <label style="display: block; font-size: 12px; font-weight: 700; color: #334155; margin-bottom: 5px;">
               Receiver Email ID (Recipient)
@@ -145,32 +145,31 @@
           </div>
         </div>
 
-        <div style="display: flex; gap: 12px; align-items: flex-end; flex-wrap: wrap;">
-          <div style="min-width: 180px;">
-            <label style="display: block; font-size: 12px; font-weight: 700; color: #334155; margin-bottom: 5px;">
-              Date Range Mode
-            </label>
-            <select id="quick-period-mode" onchange="toggleQuickPeriod()" style="width: 100%; padding: 10px 12px; border: 1px solid #cbd5e1; border-radius: 6px; font-size: 13px; font-weight: 500; background: white;">
-              <option value="today">Today Only (Day-to-day)</option>
-              <option value="customRange">Custom Date Range (From - To)</option>
-            </select>
+        <div style="background: white; border: 1px solid #cbd5e1; border-radius: 8px; padding: 14px; margin-bottom: 10px; box-shadow: 0 1px 3px rgba(0,0,0,0.05);">
+          <div style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 10px; flex-wrap: wrap; gap: 8px;">
+            <div style="font-size: 13px; font-weight: 700; color: #0f172a;">
+              📅 Export Date Range (Choose the period matching your open Tally screen)
+            </div>
+            <div style="display: flex; gap: 6px;">
+              <button type="button" class="btn-secondary" onclick="setDatePreset('1apr')" style="padding: 5px 12px; font-size: 12px; font-weight: 600; cursor: pointer;">1-Apr-2026</button>
+              <button type="button" class="btn-secondary" onclick="setDatePreset('month')" style="padding: 5px 12px; font-size: 12px; font-weight: 600; cursor: pointer;">Full Month (1-30 Apr)</button>
+              <button type="button" class="btn-secondary" onclick="setDatePreset('today')" style="padding: 5px 12px; font-size: 12px; font-weight: 600; cursor: pointer;">Today</button>
+            </div>
           </div>
-          <div id="quick-from-date-box" style="display: none; min-width: 140px;">
-            <label style="display: block; font-size: 12px; font-weight: 700; color: #334155; margin-bottom: 5px;">
-              From Date
-            </label>
-            <input type="date" id="quick-from-date" style="width: 100%; padding: 9px 10px; border: 1px solid #cbd5e1; border-radius: 6px; font-size: 13px;" />
-          </div>
-          <div id="quick-to-date-box" style="display: none; min-width: 140px;">
-            <label style="display: block; font-size: 12px; font-weight: 700; color: #334155; margin-bottom: 5px;">
-              To Date
-            </label>
-            <input type="date" id="quick-to-date" style="width: 100%; padding: 9px 10px; border: 1px solid #cbd5e1; border-radius: 6px; font-size: 13px;" />
-          </div>
-          <div style="margin-left: auto;">
-            <button class="btn-primary" id="btn-quick-send" onclick="triggerQuickSend()" style="padding: 10px 24px; font-size: 13px; border-radius: 6px; box-shadow: 0 1px 2px rgba(0,0,0,0.1);">
-              📤 Send Now
-            </button>
+          <div style="display: grid; grid-template-columns: 1fr 1fr auto; gap: 14px; align-items: end;">
+            <div>
+              <label style="display: block; font-size: 12px; font-weight: 600; color: #475569; margin-bottom: 5px;">From Date</label>
+              <input type="date" id="quick-from-date" value="2026-04-01" style="width: 100%; padding: 10px 12px; border: 1px solid #94a3b8; border-radius: 6px; font-size: 14px; font-weight: 600; color: #0f172a; background: #f8fafc;" />
+            </div>
+            <div>
+              <label style="display: block; font-size: 12px; font-weight: 600; color: #475569; margin-bottom: 5px;">To Date</label>
+              <input type="date" id="quick-to-date" value="2026-04-01" style="width: 100%; padding: 10px 12px; border: 1px solid #94a3b8; border-radius: 6px; font-size: 14px; font-weight: 600; color: #0f172a; background: #f8fafc;" />
+            </div>
+            <div>
+              <button class="btn-primary" id="btn-quick-send" onclick="triggerQuickSend()" style="padding: 11px 28px; font-size: 14px; font-weight: 700; border-radius: 6px; box-shadow: 0 2px 4px rgba(37,99,235,0.2); white-space: nowrap;">
+                📤 Send Now
+              </button>
+            </div>
           </div>
         </div>
       </div>
@@ -733,26 +732,22 @@
       }
     }
 
-    function toggleQuickPeriod() {
-      const mode = document.getElementById('quick-period-mode').value;
-      const isCustom = mode === 'customRange';
-      const fromBox = document.getElementById('quick-from-date-box');
-      const toBox = document.getElementById('quick-to-date-box');
-      if (fromBox && toBox) {
-        fromBox.style.display = isCustom ? 'block' : 'none';
-        toBox.style.display = isCustom ? 'block' : 'none';
-        if (isCustom) {
-          const fromInput = document.getElementById('quick-from-date');
-          const toInput = document.getElementById('quick-to-date');
-          if (!fromInput.value) fromInput.value = '2026-04-01';
-          if (!toInput.value) {
-            const now = new Date();
-            const y = now.getFullYear();
-            const m = String(now.getMonth() + 1).padStart(2, '0');
-            const d = String(now.getDate()).padStart(2, '0');
-            toInput.value = `${y}-${m}-${d}`;
-          }
-        }
+    function setDatePreset(preset) {
+      const fromInput = document.getElementById('quick-from-date');
+      const toInput = document.getElementById('quick-to-date');
+      if (preset === '1apr') {
+        fromInput.value = '2026-04-01';
+        toInput.value = '2026-04-01';
+      } else if (preset === 'month') {
+        fromInput.value = '2026-04-01';
+        toInput.value = '2026-04-30';
+      } else if (preset === 'today') {
+        const now = new Date();
+        const y = now.getFullYear();
+        const m = String(now.getMonth() + 1).padStart(2, '0');
+        const d = String(now.getDate()).padStart(2, '0');
+        fromInput.value = `${y}-${m}-${d}`;
+        toInput.value = `${y}-${m}-${d}`;
       }
     }
 
@@ -768,28 +763,30 @@
         return;
       }
 
-      const periodMode = document.getElementById('quick-period-mode')?.value || 'today';
+      const fromVal = document.getElementById('quick-from-date')?.value || '';
+      const toVal = document.getElementById('quick-to-date')?.value || fromVal;
+
+      const fromDate = fromVal ? fromVal.replace(/-/g, '') : undefined;
+      const toDate = toVal ? toVal.replace(/-/g, '') : fromDate;
+
       const payload = {
         receiverEmail: emails.join(', '),
         reportType: reportType,
-        periodMode: periodMode,
+        periodMode: 'customRange',
+        fromDate: fromDate,
+        toDate: toDate,
       };
-
-      if (periodMode === 'customRange') {
-        const fromVal = document.getElementById('quick-from-date')?.value;
-        const toVal = document.getElementById('quick-to-date')?.value;
-        if (!fromVal || !toVal) {
-          showAlert('Please select both From Date and To Date for Custom Date Range.', false);
-          return;
-        }
-        payload.fromDate = fromVal.replace(/-/g, '');
-        payload.toDate = toVal.replace(/-/g, '');
-      }
 
       try {
         const btn = document.getElementById('btn-quick-send');
         btn.disabled = true;
         btn.innerText = '⏳ Exporting & Sending...';
+
+        const btnHeader = document.getElementById('btn-run-now');
+        if (btnHeader) {
+          btnHeader.disabled = true;
+          btnHeader.innerText = '⏳ Running...';
+        }
 
         const res = await fetch('/api/run-now', {
           method: 'POST',
@@ -803,31 +800,27 @@
         setTimeout(() => {
           btn.disabled = false;
           btn.innerText = '📤 Send Now';
+          if (btnHeader) {
+            btnHeader.disabled = false;
+            btnHeader.innerText = '▶ Send Now';
+          }
           fetchStatus();
         }, 3000);
       } catch (err) {
         showAlert('Dispatch error: ' + err.message, false);
+        const btn = document.getElementById('btn-quick-send');
+        btn.disabled = false;
+        btn.innerText = '📤 Send Now';
+        const btnHeader = document.getElementById('btn-run-now');
+        if (btnHeader) {
+          btnHeader.disabled = false;
+          btnHeader.innerText = '▶ Send Now';
+        }
       }
     }
 
     async function triggerRunNow() {
-      try {
-        const btn = document.getElementById('btn-run-now');
-        btn.disabled = true;
-        btn.innerText = '⏳ Running...';
-
-        const res = await fetch('/api/run-now', { method: 'POST' });
-        const data = await res.json();
-        showAlert(data.message, data.success);
-
-        setTimeout(() => {
-          btn.disabled = false;
-          btn.innerText = '▶ Send Now';
-          fetchStatus();
-        }, 3000);
-      } catch (err) {
-        showAlert('Trigger error: ' + err.message, false);
-      }
+      return triggerQuickSend();
     }
 
     async function testTally() {
