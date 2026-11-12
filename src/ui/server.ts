@@ -8,7 +8,7 @@ import { parseEmailList, validateEmailList } from '../utils/emailValidator';
 import { resolveAndEnsureFolder } from '../utils/folderHelper';
 import { MailerService } from '../mailer/mailer';
 import { AppScheduler } from '../scheduler/scheduler';
-import { ExportOrchestrator } from '../scheduler/orchestrator';
+import { ExportOrchestrator, CycleOverrideOptions } from '../scheduler/orchestrator';
 import { StateManager } from '../scheduler/stateManager';
 import { logger } from '../utils/logger';
 
@@ -130,9 +130,20 @@ export class WebUiServer {
 
         const reportType = req.body.reportType || this.config.dayBook.reportType || 'Day Book';
 
-        const overrideOptions: { recipients?: string[]; reportType?: string } = {
+        const overrideOptions: CycleOverrideOptions = {
           reportType,
         };
+
+        if (req.body.fromDate) {
+          overrideOptions.fromDate = req.body.fromDate;
+          overrideOptions.periodMode = 'customRange';
+        }
+        if (req.body.toDate) {
+          overrideOptions.toDate = req.body.toDate;
+        }
+        if (req.body.periodMode) {
+          overrideOptions.periodMode = req.body.periodMode;
+        }
 
         if (receiverEmails && receiverEmails.length > 0) {
           overrideOptions.recipients = receiverEmails;

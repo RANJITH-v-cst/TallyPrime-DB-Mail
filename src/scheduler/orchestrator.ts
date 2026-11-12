@@ -13,6 +13,14 @@ import { buildExportFileName } from '../utils/sanitizer';
 import { formatDateTime } from '../mailer/templates';
 import { logger } from '../utils/logger';
 
+export interface CycleOverrideOptions {
+  recipients?: string[];
+  reportType?: string;
+  periodMode?: 'today' | 'sinceLastRun' | 'customRange';
+  fromDate?: string;
+  toDate?: string;
+}
+
 export class ExportOrchestrator {
   private tallyClient: TallyClient;
   private discoveryService: CompanyDiscoveryService;
@@ -58,7 +66,7 @@ export class ExportOrchestrator {
    * Runs a complete export cycle across all open/configured companies sequentially.
    * Reloads freshest config at the start of every cycle.
    */
-  public async runCycle(overrideOptions?: { recipients?: string[]; reportType?: string }): Promise<ExportCycleSummary> {
+  public async runCycle(overrideOptions?: CycleOverrideOptions): Promise<ExportCycleSummary> {
     if (this.isCycleRunning) {
       logger.warn('Previous export cycle is still running. Skipping current trigger.');
       throw new Error('An export cycle is already in progress');
@@ -157,7 +165,7 @@ export class ExportOrchestrator {
 
         // Export each requested report for this company
         for (const rep of reportsToExport) {
-          const result = await this.exportSingleCompany(company, cycleDateStr, rep, exportFolder);
+          const result = await this.exportSingleCompany(company, cycleDateStr, rep, exportFolder, overrideOptions);
           results.push(result);
         }
       }
@@ -243,18 +251,19 @@ export class ExportOrchestrator {
     companyName: string,
     todayStr: string,
     reportName: string = 'Day Book',
-    exportFolder: string = './exports'
+    exportFolder: string = './exports',
+    overrideOptions?: CycleOverrideOptions
   ): Promise<CompanyExportResult> {
     const compState = this.stateManager.getCompanyState(companyName);
-    const periodMode = this.config.dayBook.periodMode;
+    const periodMode = overrideOptions?.periodMode || (overrideOptions?.fromDate ? 'customRange' : this.config.dayBook.periodMode);
 
     let fromDate = todayStr;
     let toDate = todayStr;
     let sinceAlterId: number | undefined = undefined;
 
     if (periodMode === 'customRange') {
-      fromDate = this.config.dayBook.fromDate || todayStr;
-      toDate = this.config.dayBook.toDate || todayStr;
+      fromDate = overrideOptions?.fromDate || this.config.dayBook.fromDate || todayStr;
+      toDate = overrideOptions?.toDate || this.config.dayBook.toDate || todayStr;
     } else if (periodMode === 'sinceLastRun' && reportName === 'Day Book') {
       // Midnight rollover check
       const isNewDay = this.stateManager.isMidnightRollover(companyName, todayStr);

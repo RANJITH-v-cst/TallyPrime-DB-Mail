@@ -1,6 +1,6 @@
 import cron, { ScheduledTask } from 'node-cron';
 import { AppConfig, ExportCycleSummary } from '../config/types';
-import { ExportOrchestrator } from './orchestrator';
+import { ExportOrchestrator, CycleOverrideOptions } from './orchestrator';
 import { logger } from '../utils/logger';
 
 export class AppScheduler {
@@ -107,7 +107,7 @@ export class AppScheduler {
    */
   public async executeProtectedCycle(
     triggerSource: string,
-    overrideOptions?: { recipients?: string[]; reportType?: string },
+    overrideOptions?: CycleOverrideOptions,
     isManual: boolean = false
   ): Promise<ExportCycleSummary | null> {
     if (this.isShuttingDown) {
@@ -139,9 +139,9 @@ export class AppScheduler {
   }
 
   /**
-   * Manual trigger from Web UI ("Send Now" with optional custom recipient and report type)
+   * Manual trigger from Web UI ("Send Now" with optional custom recipient, report type, and date range)
    */
-  public async triggerManualRun(overrideOptions?: { recipients?: string[]; reportType?: string }): Promise<ExportCycleSummary> {
+  public async triggerManualRun(overrideOptions?: CycleOverrideOptions): Promise<ExportCycleSummary> {
     if (this.orchestrator.getIsRunning()) {
       throw new Error('An export cycle is currently running. Please wait for it to complete.');
     }

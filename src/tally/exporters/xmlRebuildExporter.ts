@@ -540,8 +540,8 @@ export class XmlRebuildExporter implements IExporter {
       let vouchers = this.parseVouchers(responseXml);
 
       // Step 2: Fallback to collection export if report returned no vouchers
-      if (vouchers.length === 0 && !responseXml.includes('<VOUCHER')) {
-        logger.debug(
+      if (vouchers.length === 0) {
+        logger.info(
           `Day Book report returned 0 vouchers, trying collection fallback for "${options.companyName}"...`
         );
         const collectionXml = this.buildVoucherFetchXml(options);

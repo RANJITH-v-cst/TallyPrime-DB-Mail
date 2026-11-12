@@ -216,18 +216,21 @@ Where something is marked "unresolved" or "unverified", treat it as not yet prov
 - **Stack:** Node.js, TypeScript, Express, ExcelJS, fast-xml-parser, node-cron, Nodemailer with AES-256-GCM encryption at rest.
 - **Architecture & Workflow:**
   1. **Tally Connection & Discovery:** Connects to `127.0.0.1:9000`. Discovers open company tabs via isolated `ADV Company Coll`.
-  2. **Day Book Extraction:** Queries native Day Book XML using `<TYPE>Data</TYPE><ID>Day Book</ID>` with `<EXPLODEFLAG>Yes</EXPLODEFLAG>` and `<SVEXPORTFORMAT>$$SysName:XML</SVEXPORTFORMAT>`. Fallback to collection query `ADV DayBook Coll` if needed.
+  2. **Day Book Extraction & Multi-Day Date Ranges:**
+     - For single-day exports (`today`), queries native Day Book XML using `<TYPE>Data</TYPE><ID>Day Book</ID>` with `<EXPLODEFLAG>Yes</EXPLODEFLAG>` and `<SVEXPORTFORMAT>$$SysName:XML</SVEXPORTFORMAT>`.
+     - **Multi-day / Custom Period Fallback:** Tally's headless HTTP gateway does not retain interactive UI date ranges across multi-day views when queried via `<ID>Day Book</ID>`. When querying date ranges (e.g. `20260401` to `20260430` with 1,200+ vouchers), the engine queries via dynamic TDL Collection `ADV DayBook Coll` with `<FILTER>$Date >= ##SVFromDate AND $Date <= ##SVToDate</FILTER>`, fetching all vouchers and ledger allocations in a single high-performance roundtrip.
+     - **Caution on CMPINFO:** Tally returns `<CMPINFO><VOUCHER>0</VOUCHER></CMPINFO>` in master export envelopes even when vouchers exist; never use `.includes('<VOUCHER')` to test for voucher presence. Always evaluate parsed `vouchers.length === 0`.
   3. **Robust XML Parsing:** Uses `extractText()` and `extractNumber()` unwrappers to extract `#text` values from typed XML tags (`TYPE="String"`, `TYPE="Date"`, `TYPE="Amount"`), eliminating `[object Object]` and `0.00` calculation bugs. Inspects `ALLLEDGERENTRIES.LIST`, `LEDGERENTRIES.LIST`, and `ALLINVENTORYENTRIES.LIST.ACCOUNTINGALLOCATIONS.LIST`.
   4. **Excel Rebuild:** Uses `exceljs` to generate a Day Book layout matching TallyPrime:
-     - Company Name, "Day Book", Period header (`12-Nov-26`).
+     - Company Name, "Day Book", Period header (`01-Apr-26 to 30-Apr-26` or single date).
      - Main voucher line shows party name and voucher amount in the **Debit Amount** column for Payments and Sales (matching TallyPrime's Day Book screen).
      - Detailed mode indents individual ledger allocations (DR/CR) and narration.
      - Grand total row balances correctly without double-counting.
      - Empty dates output `"No transactions recorded for this date"` with `0.00` totals (no ghost rows).
   5. **Common Folder Storage:** Saves files atomically (`.tmp` + rename) to `<User Profile>\Desktop\Advent DB Export` with collision avoidance (`_1.xlsx`, `_2.xlsx`) and retention pruning.
-  6. **Scheduling & Dispatch:**
+  6. **Scheduling, Manual Runs & CLI:**
      - **Daily Nightly Mode:** Configured via `node-cron` (`0 20 * * *`) to automatically export and email the current date's transactions every night at **8:00 PM (20:00)**.
-     - **Interval Mode:** Optional periodic dispatch every $N$ minutes.
+     - **Custom Date Range CLI:** Run `node scripts/directExport.js [YYYYMMDD] [YYYYMMDD]` (e.g. `node scripts/directExport.js 20260401 20260430`) for instant manual exports and mailing of any date range.
      - **Control Center:** Web UI at `http://127.0.0.1:9095` featuring recipient chip inputs, regex validation, atomic settings persistence, Test Tally, Test Mail, and manual "Send Now" triggers.
 
 ### E4. Gorland Reports

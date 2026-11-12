@@ -3,8 +3,18 @@ const { StateManager } = require('../dist/scheduler/stateManager');
 const { ExportOrchestrator } = require('../dist/scheduler/orchestrator');
 
 async function run() {
+  const args = process.argv.slice(2);
+  const fromDate = args[0]; // e.g. 20260401
+  const toDate = args[1];   // e.g. 20260430
+  const reportType = args[2] || 'Day Book';
+
   console.log('========================================================');
-  console.log('STARTING DIRECT DAY BOOK EXPORT & DISPATCH');
+  console.log('TALLY AUTOMATIC EXPORT & DISPATCH');
+  if (fromDate && toDate) {
+    console.log(`Period: ${fromDate} to ${toDate}`);
+  } else {
+    console.log('Period: Configured Mode (Today)');
+  }
   console.log('========================================================');
   
   const config = loadConfig();
@@ -15,7 +25,17 @@ async function run() {
   const stateManager = new StateManager();
   const orchestrator = new ExportOrchestrator(config, stateManager);
 
-  const summary = await orchestrator.runCycle();
+  const overrideOptions = {
+    reportType,
+  };
+
+  if (fromDate && toDate) {
+    overrideOptions.periodMode = 'customRange';
+    overrideOptions.fromDate = fromDate;
+    overrideOptions.toDate = toDate;
+  }
+
+  const summary = await orchestrator.runCycle(overrideOptions);
   console.log('\n========================================================');
   console.log('CYCLE EXECUTION SUMMARY:');
   console.log('Success Count:', summary.successfulCompanies);
@@ -27,6 +47,7 @@ async function run() {
   summary.results.forEach((r, idx) => {
     console.log(`\nResult #${idx + 1} for "${r.companyName}":`);
     console.log(`  Status: ${r.status}`);
+    console.log(`  Period: ${r.periodText}`);
     console.log(`  Voucher Count: ${r.voucherCount}`);
     console.log(`  File Name: ${r.fileName || 'N/A'}`);
     console.log(`  File Path: ${r.filePath || 'N/A'}`);
