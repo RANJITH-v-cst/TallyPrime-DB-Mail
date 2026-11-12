@@ -5,12 +5,12 @@ const { ExportOrchestrator } = require('../dist/scheduler/orchestrator');
 async function run() {
   const args = process.argv.slice(2);
   const fromDate = args[0]; // e.g. 20260401
-  const toDate = args[1];   // e.g. 20260430
+  const toDate = args[1] || fromDate; // if only 1 date passed, use it as single-day period
   const reportType = args[2] || 'Day Book';
 
   console.log('========================================================');
   console.log('TALLY AUTOMATIC EXPORT & DISPATCH');
-  if (fromDate && toDate) {
+  if (fromDate) {
     console.log(`Period: ${fromDate} to ${toDate}`);
   } else {
     console.log('Period: Configured Mode (Today)');
@@ -29,7 +29,7 @@ async function run() {
     reportType,
   };
 
-  if (fromDate && toDate) {
+  if (fromDate) {
     overrideOptions.periodMode = 'customRange';
     overrideOptions.fromDate = fromDate;
     overrideOptions.toDate = toDate;
