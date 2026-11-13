@@ -22,7 +22,9 @@ export const DEFAULT_CONFIG: AppConfig = {
     voucherTypes: [],
     detailed: true,
     skipIfNoEntries: false,
-    exporter: 'xmlRebuild', // Default: xmlRebuild (Native stays only as optional setting)
+    exporter: 'auto', // Default: auto (tries Tally native Excel first to include TDL columns, falls back to xmlRebuild)
+    tdlFilePath: process.env.TDL_FILE_PATH || undefined,
+    tdlEnabled: !!process.env.TDL_FILE_PATH,
   },
   exportFolder: getDefaultExportFolder(),
   schedule: {

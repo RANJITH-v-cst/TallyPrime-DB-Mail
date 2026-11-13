@@ -7,11 +7,14 @@ export interface ExportOptions {
   toDate: string;   // YYYYMMDD
   sinceAlterId?: number;
   reportId?: string; // 'Day Book' or 'Balance Sheet'
+  exportFolder?: string;
 }
 
 export interface ExporterResult {
   success: boolean;
   fileBuffer?: Buffer;
+  filePath?: string;
+  fileName?: string;
   voucherCount: number;
   newOrAlteredCount?: number;
   vouchers?: VoucherEntry[];

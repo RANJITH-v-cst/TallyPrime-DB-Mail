@@ -2,6 +2,7 @@ module.exports = {
   preset: 'ts-jest',
   testEnvironment: 'node',
   testMatch: ['**/test/**/*.test.ts'],
+  modulePathIgnorePatterns: ['<rootDir>/installer/'],
   transform: {
     '^.+\\.tsx?$': ['ts-jest', {
       tsconfig: {

@@ -22,6 +22,14 @@ export class TallyClient {
     });
   }
 
+  public getHost(): string {
+    return this.host;
+  }
+
+  public getPort(): number {
+    return this.port;
+  }
+
   /**
    * Checks if TallyPrime is reachable using an isolated Company collection with FETCH.
    * Completely avoids Form:Company "No PARTS" UI errors.

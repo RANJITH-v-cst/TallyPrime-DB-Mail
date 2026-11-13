@@ -18,12 +18,15 @@ export class ExporterFactory {
    * with seamless automatic fallback.
    */
   public async export(options: ExportOptions): Promise<ExporterResult & { methodUsed: 'native' | 'xmlRebuild' }> {
-    const preference = options.config.exporter || 'xmlRebuild';
+    const preference = options.config.exporter || 'auto';
 
-    if (preference === 'native') {
+    if (preference === 'native' || preference === 'auto') {
       logger.info(`[Native-Mode] Trying NativeExcelExporter for "${options.companyName}"...`);
       const nativeRes = await this.nativeExporter.exportDayBook(options);
       if (nativeRes.success && nativeRes.fileBuffer) {
+        return { ...nativeRes, methodUsed: 'native' };
+      }
+      if (preference === 'native') {
         return { ...nativeRes, methodUsed: 'native' };
       }
       logger.warn(`Native export did not return valid Excel for "${options.companyName}". Falling back to XmlRebuildExporter...`);

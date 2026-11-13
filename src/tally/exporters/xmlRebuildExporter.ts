@@ -554,12 +554,10 @@ export class XmlRebuildExporter implements IExporter {
     totalRow.getCell(5).numFmt = numFmt;
     totalRow.getCell(5).font = { bold: true };
     totalRow.getCell(5).alignment = { horizontal: 'right' };
-
     totalRow.getCell(6).value = grandTotalCredit > 0 ? grandTotalCredit : 0;
     totalRow.getCell(6).numFmt = numFmt;
     totalRow.getCell(6).font = { bold: true };
     totalRow.getCell(6).alignment = { horizontal: 'right' };
-
     const totalBorder = {
       top: { style: 'thin' as const },
       bottom: { style: 'double' as const },
@@ -567,23 +565,19 @@ export class XmlRebuildExporter implements IExporter {
     for (let c = 1; c <= 6; c++) {
       totalRow.getCell(c).border = totalBorder;
     }
-
     // Generate buffer
     const buffer = await workbook.xlsx.writeBuffer();
     return Buffer.from(buffer);
   }
-
   public async exportDayBook(options: ExportOptions): Promise<ExporterResult> {
     try {
       logger.info(
         `Fetching Day Book XML for "${options.companyName}" (${options.fromDate} to ${options.toDate})...`
       );
-
       const allStyles: DateStyle[] = ['ymd-typed', 'ymd', 'dmy'];
       const order = this.preferredStyle
         ? [this.preferredStyle, ...allStyles.filter((s) => s !== this.preferredStyle)]
         : allStyles;
-
       let vouchers: VoucherEntry[] = [];
       let matched = false;
       for (const style of order) {
@@ -619,7 +613,6 @@ export class XmlRebuildExporter implements IExporter {
           options.config.voucherTypes.some((t) => t.toLowerCase() === v.voucherType.toLowerCase())
         );
       }
-
       // If sinceAlterId filter is applied
       let newOrAlteredCount = vouchers.length;
       if (typeof options.sinceAlterId === 'number' && options.sinceAlterId > 0) {
@@ -630,13 +623,10 @@ export class XmlRebuildExporter implements IExporter {
           vouchers = filtered;
         }
       }
-
       logger.info(
         `Parsed ${vouchers.length} vouchers for "${options.companyName}" (${newOrAlteredCount} new/altered). Building Excel workbook...`
       );
-
       const excelBuffer = await this.buildExcelWorkbook(options, vouchers);
-
       return {
         success: true,
         fileBuffer: excelBuffer,

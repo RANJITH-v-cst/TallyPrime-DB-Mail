@@ -135,6 +135,7 @@ export class ExportOrchestrator {
       }
 
       // Tally is up: clear any down alert state
+      logger.info(`[Test Tally connection] Port ${this.config.tally.port} reachability check: ONLINE`);
       this.stateManager.clearTallyDownAlert();
 
       // Step 1: Discover open companies
@@ -155,8 +156,14 @@ export class ExportOrchestrator {
       // Determine reports to export: 'Day Book', 'Balance Sheet', or both
       const reportsToExport = activeReportType === 'Both' ? ['Day Book', 'Balance Sheet'] : [activeReportType];
 
-      // Sequential export for each company (60s timeout per company)
-      for (const company of targetCompanies) {
+      // Sequential export for each company (strictly one at a time, 2s pause between companies)
+      for (let i = 0; i < targetCompanies.length; i++) {
+        const company = targetCompanies[i];
+        if (i > 0) {
+          logger.info(`Pausing 2 seconds before next company...`);
+          await new Promise((resolve) => setTimeout(resolve, 2000));
+        }
+
         const isCompanyOpen = discovery.openCompanies.some(
           (c) => c.toLowerCase() === company.toLowerCase()
         );
@@ -174,22 +181,10 @@ export class ExportOrchestrator {
           continue;
         }
 
-        // Export each requested report for this company (Bug 5: catch per-company errors, continue rest)
+        // Export each requested report for this company with retry on ECONNRESET / ECONNREFUSED
         for (const rep of reportsToExport) {
-          try {
-            const result = await this.exportSingleCompany(company, cycleDateStr, rep, exportFolder, overrideOptions);
-            results.push(result);
-          } catch (compErr: any) {
-            logger.error(`Export failed for company "${company}" (${rep}): ${compErr.message}`);
-            results.push({
-              companyName: rep === 'Day Book' ? company : `${company} (${rep})`,
-              status: 'FAILED',
-              voucherCount: 0,
-              periodText: '--',
-              generatedAt: formatDateTime(new Date()),
-              error: compErr.message,
-            });
-          }
+          const result = await this.exportWithRetry(company, cycleDateStr, rep, exportFolder, overrideOptions);
+          results.push(result);
         }
       }
 

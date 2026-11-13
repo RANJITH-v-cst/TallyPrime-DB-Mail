@@ -151,6 +151,40 @@ The application will:
 
 ---
 
+## 📦 Installer & Standalone Deployment (Recommended for Clients)
+
+For end-user client PCs that have **zero development tools** (no Node.js, no npm, no Git), you can generate a single self-contained Windows setup file: `TallyDayBookMailer-Setup.exe`.
+
+### 1. Building the Installer
+On your development machine (with Node.js and Inno Setup 6 installed):
+```cmd
+installer\build-installer.bat
+```
+This automated build script:
+1. Runs `npm run build` to compile TypeScript and copy web assets.
+2. Creates an isolated `installer\stage\` directory and runs `npm ci --omit=dev` to bundle only production dependencies.
+3. Bundles the local `node.exe` runtime as `tallydaybook.exe`.
+4. Compiles the package via Inno Setup 6 into `installer\output\TallyDayBookMailer-Setup.exe`.
+
+### 2. Client PC Installation
+- **No Prerequisites**: The client PC does not need Node.js or any runtime dependencies installed.
+- **Double-click `TallyDayBookMailer-Setup.exe`**:
+  - Installs cleanly per-user (no administrator privileges or UAC prompts required).
+  - Configures the app to start automatically and silently in the background at every Windows login (via `{userstartup}`).
+  - Places a **TallyDayBook Control Center** shortcut on the user's Desktop.
+  - Creates Start Menu entries for opening the Control Center, starting, and stopping the background process.
+- **Windows SmartScreen**: If Windows displays an "Unknown Publisher" warning on an unsigned setup file, click **More info** -> **Run anyway**.
+
+### 3. First-Time Setup on Client Machine
+1. Double-click the **TallyDayBook Control Center** shortcut on the Desktop (or browse to `http://127.0.0.1:9095`).
+2. Go to **Settings** and configure:
+   - **Sender Email & SMTP Password / App Password**
+   - **Recipient Email(s)**
+   - **Schedule Interval or Daily Export Time**
+3. Click **Save Configuration** and test connectivity using **Test Tally** and **Test Mail**.
+
+---
+
 ## 🖥️ Running as a Windows Service
 
 To ensure the application runs continuously in the background, starts automatically on Windows boot, and restarts automatically if it crashes:

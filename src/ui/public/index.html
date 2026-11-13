@@ -292,6 +292,16 @@
                   <input type="checkbox" id="skip-no-entries" style="width: auto;" /> Skip company attachment if 0 vouchers
                 </label>
               </div>
+              <div class="form-group">
+                <label>
+                  <input type="checkbox" id="tdl-enabled" onchange="toggleTdlFields()" style="width: auto;" /> Inject Custom TDL File (Fallback)
+                </label>
+                <div class="hint">Enable only if custom TDL columns are not already loaded in TallyPrime.</div>
+              </div>
+              <div id="tdl-path-group" class="form-group" style="display: none;">
+                <label>TDL File Path (.tdl)</label>
+                <input type="text" id="tdl-file-path" placeholder="C:\TallyPrime\custom_columns.tdl" />
+              </div>
             </div>
 
             <div class="form-section">
@@ -586,6 +596,9 @@
         document.getElementById('voucher-types').value = (currentConfig.dayBook.voucherTypes || []).join(', ');
         document.getElementById('detailed-flag').checked = !!currentConfig.dayBook.detailed;
         document.getElementById('skip-no-entries').checked = !!currentConfig.dayBook.skipIfNoEntries;
+        document.getElementById('tdl-enabled').checked = !!currentConfig.dayBook.tdlEnabled;
+        document.getElementById('tdl-file-path').value = currentConfig.dayBook.tdlFilePath || '';
+        toggleTdlFields();
         document.getElementById('export-folder').value = currentConfig.exportFolder || '';
         
         document.getElementById('smtp-host').value = currentConfig.smtp.host;
@@ -632,6 +645,12 @@
       } catch (err) {
         showAlert('Error loading config: ' + err.message, false);
       }
+    }
+
+    function toggleTdlFields() {
+      const enabled = document.getElementById('tdl-enabled')?.checked;
+      const pathGroup = document.getElementById('tdl-path-group');
+      if (pathGroup) pathGroup.style.display = enabled ? 'block' : 'none';
     }
 
     function toggleScheduleFields() {
@@ -737,6 +756,8 @@
           detailed: document.getElementById('detailed-flag').checked,
           skipIfNoEntries: document.getElementById('skip-no-entries').checked,
           exporter: document.getElementById('exporter-type').value,
+          tdlEnabled: document.getElementById('tdl-enabled')?.checked || false,
+          tdlFilePath: document.getElementById('tdl-file-path')?.value?.trim() || undefined,
         },
         smtp: {
           host: document.getElementById('smtp-host').value.trim(),

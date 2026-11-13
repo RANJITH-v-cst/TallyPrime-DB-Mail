@@ -18,6 +18,8 @@ export interface DayBookConfig {
   detailed: boolean;      // EXPLODEFLAG: Yes/No
   skipIfNoEntries: boolean;
   exporter: ExporterType; // auto | native | xmlRebuild
+  tdlFilePath?: string;   // Optional custom .tdl file path to inject into request
+  tdlEnabled?: boolean;    // Toggle whether to inject custom TDL into request
 }
 
 export interface ScheduleConfig {
@@ -99,6 +101,8 @@ export interface VoucherEntry {
   amount: number;
   alterId?: number;
   masterId?: number;
+  createdBy?: string;
+  createdTime?: string;
   ledgerEntries: {
     ledgerName: string;
     amount: number;

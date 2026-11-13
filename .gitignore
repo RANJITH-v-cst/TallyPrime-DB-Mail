@@ -5,6 +5,10 @@ state.json
 
 # Build output
 dist/
+debug/
+installer/stage/
+installer/output/
+*.zip
 
 # Dependencies
 node_modules/

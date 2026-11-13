@@ -9,6 +9,7 @@
     "dev": "ts-node src/index.ts",
     "test": "jest",
     "mock-tally": "ts-node src/mock/mockTallyServer.ts",
+    "tally:probe": "ts-node src/cli/probe.ts",
     "service:install": "node service/install-service.js",
     "service:uninstall": "node service/uninstall-service.js"
   },

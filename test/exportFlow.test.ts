@@ -169,28 +169,28 @@ describe('Export Flow and TDL Safety Tests', () => {
     const vouchers = exporter.parseVouchers(xml);
     expect(vouchers.length).toBe(2);
 
-    // Voucher 1: Payment to S3 Mobiles for 5,000
+    // Voucher 1: Payment to Alpha Supplies Co for 10,000
     const v1 = vouchers[0];
     expect(v1.voucherType).toBe('Payment');
-    expect(v1.voucherNumber).toBe('171');
-    expect(v1.partyLedgerName).toBe('S3 Mobiles');
-    expect(v1.amount).toBe(5000);
+    expect(v1.voucherNumber).toBe('PAY-101');
+    expect(v1.partyLedgerName).toBe('Alpha Supplies Co');
+    expect(v1.amount).toBe(10000);
     expect(v1.ledgerEntries?.length).toBe(2);
-    expect(v1.ledgerEntries?.[0].ledgerName).toBe('S3 Mobiles');
+    expect(v1.ledgerEntries?.[0].ledgerName).toBe('Alpha Supplies Co');
     expect(v1.ledgerEntries?.[0].isDeemedPositive).toBe(true); // Debit
-    expect(v1.ledgerEntries?.[1].ledgerName).toBe('City Union Bank Ltd, Clean OD A/C 153081');
+    expect(v1.ledgerEntries?.[1].ledgerName).toBe('Standard Bank Current A/c');
     expect(v1.ledgerEntries?.[1].isDeemedPositive).toBe(false); // Credit
 
-    // Voucher 2: GST SALES to 4S Mobile for 640,200
+    // Voucher 2: GST SALES to Beta Retailers Ltd for 118,000
     const v2 = vouchers[1];
     expect(v2.voucherType).toBe('GST SALES');
-    expect(v2.voucherNumber).toBe('SC22902260000412');
-    expect(v2.partyLedgerName).toBe('4S Mobile');
-    expect(v2.amount).toBe(640200);
+    expect(v2.voucherNumber).toBe('INV-2026-001');
+    expect(v2.partyLedgerName).toBe('Beta Retailers Ltd');
+    expect(v2.amount).toBe(118000);
     expect(v2.ledgerEntries?.length).toBe(5);
 
     const ledgerNames = v2.ledgerEntries?.map((l) => l.ledgerName);
-    expect(ledgerNames).toContain('4S Mobile');
+    expect(ledgerNames).toContain('Beta Retailers Ltd');
     expect(ledgerNames).toContain('GST SALES');
     expect(ledgerNames).toContain('CGST Collected @ 9%');
     expect(ledgerNames).toContain('SGST Collected @ 9%');

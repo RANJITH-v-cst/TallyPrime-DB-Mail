@@ -36,21 +36,30 @@ async function generateSampleExcel(companyName: string): Promise<Buffer> {
   const wb = new ExcelJS.Workbook();
   const ws = wb.addWorksheet('Day Book');
 
-  ws.mergeCells('A1:F1');
+  ws.mergeCells('A1:H1');
   ws.getCell('A1').value = companyName;
   ws.getCell('A1').font = { bold: true, size: 14 };
 
-  ws.mergeCells('A2:F2');
+  ws.mergeCells('A2:H2');
   ws.getCell('A2').value = 'Day Book - TallyPrime Native Export Simulation';
 
-  ws.getRow(4).values = ['Date', 'Particulars', 'Vch Type', 'Vch No.', 'Debit Amount', 'Credit Amount'];
+  ws.getRow(4).values = [
+    'Date',
+    'Particulars',
+    'Vch Type',
+    'Vch No.',
+    'Debit Amount',
+    'Credit Amount',
+    'Created By',
+    'Created Time',
+  ];
   ws.getRow(4).font = { bold: true };
 
-  ws.addRow(['12-Nov-26', 'Customer Alpha', 'Sales', 'INV-001', 54200.00, '']);
-  ws.addRow(['12-Nov-26', 'Vendor Beta', 'Payment', 'PV-042', '', 18500.00]);
-  ws.addRow(['12-Nov-26', 'Cash Account', 'Receipt', 'RV-108', 25000.00, '']);
+  ws.addRow(['12-Nov-26', 'Customer Alpha', 'Sales', 'INV-001', 54200.00, '', 'admin', '10:30 AM']);
+  ws.addRow(['12-Nov-26', 'Vendor Beta', 'Payment', 'PV-042', '', 18500.00, 'ranjith', '11:15 AM']);
+  ws.addRow(['12-Nov-26', 'Cash Account', 'Receipt', 'RV-108', 25000.00, '', 'operator1', '02:45 PM']);
 
-  const totalRow = ws.addRow(['', 'Total', '', '', 79200.00, 18500.00]);
+  const totalRow = ws.addRow(['', 'Total', '', '', 79200.00, 18500.00, '', '']);
   totalRow.font = { bold: true };
 
   const buf = await wb.xlsx.writeBuffer();
