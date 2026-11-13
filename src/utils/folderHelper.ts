@@ -106,11 +106,16 @@ export function saveFileWithLockProtection(
   const tmpFilePath = path.join(folder, `.${nameWithoutExt}.${Date.now()}.${Math.random().toString(36).substring(2, 6)}.tmp`);
   fs.writeFileSync(tmpFilePath, data);
 
-  // Attempt atomic rename; if file is locked (EBUSY / EPERM), find an available filename with suffix
+  // Attempt atomic rename; if file already exists or is locked (EBUSY / EPERM), find an available filename with suffix
   let attempt = 0;
   while (attempt < 50) {
+    if (fs.existsSync(targetFilePath)) {
+      attempt++;
+      targetFileName = `${nameWithoutExt}_${attempt}${ext}`;
+      targetFilePath = path.join(folder, targetFileName);
+      continue;
+    }
     try {
-      // If destination exists, check if it can be removed or overwritten
       fs.renameSync(tmpFilePath, targetFilePath);
       return { filePath: targetFilePath, fileName: targetFileName };
     } catch (err: any) {

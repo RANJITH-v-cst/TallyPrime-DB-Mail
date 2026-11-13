@@ -65,6 +65,19 @@ export const DEFAULT_CONFIG: AppConfig = {
 };
 
 /**
+ * Validates whether a YYYYMMDD string represents a real, valid calendar date.
+ */
+export function isValidCalendarDate(yyyymmdd: string): boolean {
+  if (!yyyymmdd || !/^\d{8}$/.test(yyyymmdd)) return false;
+  const y = parseInt(yyyymmdd.substring(0, 4), 10);
+  const m = parseInt(yyyymmdd.substring(4, 6), 10);
+  const d = parseInt(yyyymmdd.substring(6, 8), 10);
+  if (m < 1 || m > 12 || d < 1 || d > 31) return false;
+  const date = new Date(y, m - 1, d);
+  return date.getFullYear() === y && date.getMonth() === m - 1 && date.getDate() === d;
+}
+
+/**
  * Validates the loaded configuration object.
  */
 export function validateConfig(config: Partial<AppConfig>): { valid: boolean; errors: string[] } {
@@ -83,12 +96,31 @@ export function validateConfig(config: Partial<AppConfig>): { valid: boolean; er
     errors.push('dayBook.periodMode must be "today", "customRange", or "sinceLastRun"');
   }
 
-  if (config.dayBook?.periodMode === 'customRange') {
-    if (!config.dayBook.fromDate || !/^\d{8}$/.test(config.dayBook.fromDate)) {
-      errors.push('dayBook.fromDate must be YYYYMMDD for customRange');
+  // Validate dates if customRange is set, or if both fromDate and toDate are supplied
+  const isCustomRange = config.dayBook?.periodMode === 'customRange';
+  const hasDates = !!(config.dayBook?.fromDate || config.dayBook?.toDate);
+
+  if (isCustomRange || hasDates) {
+    if (!config.dayBook?.fromDate) {
+      errors.push('dayBook.fromDate is required for Date Range mode');
+    } else if (!isValidCalendarDate(config.dayBook.fromDate)) {
+      errors.push(`dayBook.fromDate '${config.dayBook.fromDate}' is not a valid calendar date in YYYYMMDD format`);
     }
-    if (!config.dayBook.toDate || !/^\d{8}$/.test(config.dayBook.toDate)) {
-      errors.push('dayBook.toDate must be YYYYMMDD for customRange');
+
+    if (!config.dayBook?.toDate) {
+      errors.push('dayBook.toDate is required for Date Range mode');
+    } else if (!isValidCalendarDate(config.dayBook.toDate)) {
+      errors.push(`dayBook.toDate '${config.dayBook.toDate}' is not a valid calendar date in YYYYMMDD format`);
+    }
+
+    if (
+      config.dayBook?.fromDate &&
+      config.dayBook?.toDate &&
+      isValidCalendarDate(config.dayBook.fromDate) &&
+      isValidCalendarDate(config.dayBook.toDate) &&
+      config.dayBook.fromDate > config.dayBook.toDate
+    ) {
+      errors.push(`From Date (${config.dayBook.fromDate}) cannot be after To Date (${config.dayBook.toDate})`);
     }
   }
 
@@ -152,6 +184,9 @@ export function mergeConfig(existing: AppConfig, incoming: Partial<AppConfig>): 
     dayBook: {
       ...existing.dayBook,
       ...(incoming.dayBook || {}),
+      periodMode: (incoming.dayBook?.fromDate && incoming.dayBook?.toDate && incoming.dayBook?.periodMode !== 'sinceLastRun')
+        ? 'customRange'
+        : (incoming.dayBook?.periodMode || existing.dayBook.periodMode),
     },
     schedule: {
       ...existing.schedule,

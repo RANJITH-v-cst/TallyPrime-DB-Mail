@@ -54,6 +54,8 @@ export class CompanyDiscoveryService {
 
   /**
    * Parses company names from Tally's XML response.
+   * Only reads COMPANY nodes (by tag or attribute) returned from "ADV Company Coll" (Type: Company).
+   * De-duplicates case-insensitively so "Acme" and "acme" count once.
    */
   public parseCompanyNames(xmlContent: string): string[] {
     if (!xmlContent || typeof xmlContent !== 'string') {
@@ -63,46 +65,67 @@ export class CompanyDiscoveryService {
     try {
       const parsed = this.parser.parse(xmlContent);
       const companies: string[] = [];
+      const seenLower = new Set<string>();
 
-      // Recursive search for company nodes or names
-      const extractNames = (obj: any) => {
+      const addName = (name: string) => {
+        if (!name || typeof name !== 'string') return;
+        const trimmed = name.trim();
+        if (!trimmed) return;
+        const lower = trimmed.toLowerCase();
+        if (!seenLower.has(lower)) {
+          seenLower.add(lower);
+          companies.push(trimmed);
+        }
+      };
+
+      // The ADV Company Coll response contains COMPANY elements under COLLECTION/TALLYMESSAGE.
+      // Walk only COMPANY nodes; do NOT pick up every NAME in the tree.
+      const extractCompanyNodes = (obj: any) => {
         if (!obj || typeof obj !== 'object') return;
 
-        // Check if current node represents a Company object
         if (obj.COMPANY) {
           const list = Array.isArray(obj.COMPANY) ? obj.COMPANY : [obj.COMPANY];
           for (const item of list) {
-            const name = item.NAME || item['@_NAME'] || item['$Name'] || (typeof item === 'string' ? item : null);
-            if (name && typeof name === 'string' && !companies.includes(name.trim())) {
-              companies.push(name.trim());
+            if (typeof item === 'string') {
+              addName(item);
+            } else if (item && typeof item === 'object') {
+              // Priority: attribute NAME, then child NAME element, then $Name
+              const name =
+                item['@_NAME'] ||
+                (typeof item.NAME === 'string' ? item.NAME : null) ||
+                item['$Name'] ||
+                null;
+              addName(name);
             }
           }
-        }
-
-        // Check if current node is a company item directly
-        if (obj.NAME && typeof obj.NAME === 'string' && !companies.includes(obj.NAME.trim())) {
-          // If this parent object looks like a company entry
-          companies.push(obj.NAME.trim());
+          return; // Don't descend into COMPANY children
         }
 
         for (const key of Object.keys(obj)) {
           if (typeof obj[key] === 'object') {
-            extractNames(obj[key]);
+            extractCompanyNodes(obj[key]);
           }
         }
       };
 
-      extractNames(parsed);
+      extractCompanyNodes(parsed);
 
-      // If XML is flat or regex-friendly, also fallback to regex in case of non-standard schema
+      // Regex fallback: if XML parser returned nothing, extract from <COMPANY NAME="..."> attributes
       if (companies.length === 0) {
-        const regex = /<NAME(?: [^>]*)?>([^<]+)<\/NAME>/gi;
-        let match;
-        while ((match = regex.exec(xmlContent)) !== null) {
-          const val = match[1].trim();
-          if (val && !companies.includes(val) && !val.includes('$$SysName')) {
-            companies.push(val);
-          }
+        const attrRegex = /<COMPANY[^>]+NAME="([^"]+)"/gi;
+        let m;
+        while ((m = attrRegex.exec(xmlContent)) !== null) {
+          addName(m[1]);
+        }
+      }
+
+      // Second fallback: <NAME> inside a <COMPANY> block (not everywhere in the doc)
+      if (companies.length === 0) {
+        const companyBlockRegex = /<COMPANY[^>]*>([\s\S]*?)<\/COMPANY>/gi;
+        let cb;
+        while ((cb = companyBlockRegex.exec(xmlContent)) !== null) {
+          const nameMatch = /<NAME[^>]*>([^<]+)<\/NAME>/i.exec(cb[1]);
+          if (nameMatch) addName(nameMatch[1]);
         }
       }
 

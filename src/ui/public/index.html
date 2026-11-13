@@ -145,30 +145,42 @@
           </div>
         </div>
 
-        <div style="background: white; border: 1px solid #cbd5e1; border-radius: 8px; padding: 14px; margin-bottom: 10px; box-shadow: 0 1px 3px rgba(0,0,0,0.05);">
+        <!-- Date Range Mode -->
+        <div style="display: grid; grid-template-columns: 1fr auto; gap: 14px; align-items: end; margin-bottom: 12px;">
+          <div>
+            <label style="display: block; font-size: 12px; font-weight: 700; color: #334155; margin-bottom: 5px;">Date Range Mode</label>
+            <select id="quick-period-mode" onchange="toggleQuickDateFields()" style="width: 100%; padding: 10px 12px; border: 1px solid #cbd5e1; border-radius: 6px; font-size: 13px; font-weight: 600; background: white;">
+              <option value="today">Today Only (Day-to-day)</option>
+              <option value="customRange">Date Range (From &#8211; To)</option>
+              <option value="sinceLastRun">Since Last Run (Incremental)</option>
+            </select>
+          </div>
+          <div>
+            <button class="btn-primary" id="btn-quick-send" onclick="triggerQuickSend()" style="padding: 11px 28px; font-size: 14px; font-weight: 700; border-radius: 6px; box-shadow: 0 2px 4px rgba(37,99,235,0.2); white-space: nowrap;">
+              📤 Send Now
+            </button>
+          </div>
+        </div>
+
+        <!-- From/To date pickers — shown only when customRange is selected -->
+        <div id="quick-date-range-row" style="display: none; background: white; border: 1px solid #cbd5e1; border-radius: 8px; padding: 14px; margin-bottom: 2px; box-shadow: 0 1px 3px rgba(0,0,0,0.05);">
           <div style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 10px; flex-wrap: wrap; gap: 8px;">
             <div style="font-size: 13px; font-weight: 700; color: #0f172a;">
-              📅 Export Date Range (Choose the period matching your open Tally screen)
+              📅 Select date range matching your open Tally screen
             </div>
             <div style="display: flex; gap: 6px;">
-              <button type="button" class="btn-secondary" onclick="setDatePreset('1apr')" style="padding: 5px 12px; font-size: 12px; font-weight: 600; cursor: pointer;">1-Apr-2026</button>
-              <button type="button" class="btn-secondary" onclick="setDatePreset('month')" style="padding: 5px 12px; font-size: 12px; font-weight: 600; cursor: pointer;">Full Month (1-30 Apr)</button>
               <button type="button" class="btn-secondary" onclick="setDatePreset('today')" style="padding: 5px 12px; font-size: 12px; font-weight: 600; cursor: pointer;">Today</button>
+              <button type="button" class="btn-secondary" onclick="setDatePreset('month')" style="padding: 5px 12px; font-size: 12px; font-weight: 600; cursor: pointer;">Full Month</button>
             </div>
           </div>
-          <div style="display: grid; grid-template-columns: 1fr 1fr auto; gap: 14px; align-items: end;">
+          <div style="display: grid; grid-template-columns: 1fr 1fr; gap: 14px;">
             <div>
               <label style="display: block; font-size: 12px; font-weight: 600; color: #475569; margin-bottom: 5px;">From Date</label>
-              <input type="date" id="quick-from-date" value="2026-04-01" style="width: 100%; padding: 10px 12px; border: 1px solid #94a3b8; border-radius: 6px; font-size: 14px; font-weight: 600; color: #0f172a; background: #f8fafc;" />
+              <input type="date" id="quick-from-date" style="width: 100%; padding: 10px 12px; border: 1px solid #94a3b8; border-radius: 6px; font-size: 14px; font-weight: 600; color: #0f172a; background: #f8fafc;" />
             </div>
             <div>
               <label style="display: block; font-size: 12px; font-weight: 600; color: #475569; margin-bottom: 5px;">To Date</label>
-              <input type="date" id="quick-to-date" value="2026-04-01" style="width: 100%; padding: 10px 12px; border: 1px solid #94a3b8; border-radius: 6px; font-size: 14px; font-weight: 600; color: #0f172a; background: #f8fafc;" />
-            </div>
-            <div>
-              <button class="btn-primary" id="btn-quick-send" onclick="triggerQuickSend()" style="padding: 11px 28px; font-size: 14px; font-weight: 700; border-radius: 6px; box-shadow: 0 2px 4px rgba(37,99,235,0.2); white-space: nowrap;">
-                📤 Send Now
-              </button>
+              <input type="date" id="quick-to-date" style="width: 100%; padding: 10px 12px; border: 1px solid #94a3b8; border-radius: 6px; font-size: 14px; font-weight: 600; color: #0f172a; background: #f8fafc;" />
             </div>
           </div>
         </div>
@@ -248,12 +260,14 @@
               </div>
               <div id="custom-date-fields" style="display: none;">
                 <div class="form-group">
-                  <label>From Date (YYYYMMDD)</label>
-                  <input type="text" id="from-date" placeholder="20261112" />
+                  <label>From Date</label>
+                  <input type="date" id="from-date" />
+                  <div class="hint">Select the start date of the Day Book period to export.</div>
                 </div>
                 <div class="form-group">
-                  <label>To Date (YYYYMMDD)</label>
-                  <input type="text" id="to-date" placeholder="20261112" />
+                  <label>To Date</label>
+                  <input type="date" id="to-date" />
+                  <div class="hint">Select the end date. Must be on or after From Date.</div>
                 </div>
               </div>
               <div class="form-group">
@@ -564,8 +578,10 @@
         document.getElementById('companies-list').value = currentConfig.companies === 'auto' ? 'auto' : currentConfig.companies.join(', ');
         
         document.getElementById('period-mode').value = currentConfig.dayBook.periodMode;
-        document.getElementById('from-date').value = currentConfig.dayBook.fromDate || '';
-        document.getElementById('to-date').value = currentConfig.dayBook.toDate || '';
+        // Bug 2: Convert YYYYMMDD → YYYY-MM-DD for date inputs
+        const yyyymmddToInput = (s) => (s && /^\d{8}$/.test(s)) ? `${s.substring(0,4)}-${s.substring(4,6)}-${s.substring(6,8)}` : (s || '');
+        document.getElementById('from-date').value = yyyymmddToInput(currentConfig.dayBook.fromDate);
+        document.getElementById('to-date').value = yyyymmddToInput(currentConfig.dayBook.toDate);
         document.getElementById('exporter-type').value = currentConfig.dayBook.exporter || 'auto';
         document.getElementById('voucher-types').value = (currentConfig.dayBook.voucherTypes || []).join(', ');
         document.getElementById('detailed-flag').checked = !!currentConfig.dayBook.detailed;
@@ -636,6 +652,12 @@
       document.getElementById('custom-date-fields').style.display = mode === 'customRange' ? 'block' : 'none';
     }
 
+    function toggleQuickDateFields() {
+      const mode = document.getElementById('quick-period-mode')?.value || 'today';
+      const rangeRow = document.getElementById('quick-date-range-row');
+      if (rangeRow) rangeRow.style.display = mode === 'customRange' ? 'block' : 'none';
+    }
+
     async function saveConfiguration(e) {
       e.preventDefault();
 
@@ -671,6 +693,33 @@
       const companies = compVal.toLowerCase() === 'auto' ? 'auto' : compVal.split(',').map(s => s.trim()).filter(Boolean);
       const vTypes = document.getElementById('voucher-types').value.split(',').map(s => s.trim()).filter(Boolean);
 
+      // Bug 2: Convert YYYY-MM-DD → YYYYMMDD for storage; validate when customRange is selected
+      const dateInputToYYYYMMDD = (val) => val ? val.replace(/-/g, '') : undefined;
+      const selectedPeriodMode = document.getElementById('period-mode').value;
+      const rawFromDate = document.getElementById('from-date').value.trim();
+      const rawToDate = document.getElementById('to-date').value.trim();
+      const fromDateVal = dateInputToYYYYMMDD(rawFromDate) || undefined;
+      const toDateVal = dateInputToYYYYMMDD(rawToDate) || undefined;
+
+      if (selectedPeriodMode === 'customRange') {
+        const isValidDate = (s) => s && /^\d{8}$/.test(s) && !isNaN(new Date(`${s.substring(0,4)}-${s.substring(4,6)}-${s.substring(6,8)}`).getTime());
+        if (!isValidDate(fromDateVal)) {
+          showAlert('From Date is required and must be a valid calendar date for Custom Date Range.', false);
+          document.getElementById('from-date').focus();
+          return;
+        }
+        if (!isValidDate(toDateVal)) {
+          showAlert('To Date is required and must be a valid calendar date for Custom Date Range.', false);
+          document.getElementById('to-date').focus();
+          return;
+        }
+        if (fromDateVal > toDateVal) {
+          showAlert(`From Date (${fromDateVal}) must not be after To Date (${toDateVal}).`, false);
+          document.getElementById('from-date').focus();
+          return;
+        }
+      }
+
       const payload = {
         tally: {
           host: document.getElementById('tally-host').value.trim(),
@@ -681,9 +730,9 @@
         exportFolder: document.getElementById('export-folder')?.value?.trim() || undefined,
         dayBook: {
           reportType: document.getElementById('quick-report-type')?.value || currentConfig.dayBook?.reportType || 'Day Book',
-          periodMode: document.getElementById('period-mode').value,
-          fromDate: document.getElementById('from-date').value.trim() || undefined,
-          toDate: document.getElementById('to-date').value.trim() || undefined,
+          periodMode: selectedPeriodMode,
+          fromDate: fromDateVal,
+          toDate: toDateVal,
           voucherTypes: vTypes,
           detailed: document.getElementById('detailed-flag').checked,
           skipIfNoEntries: document.getElementById('skip-no-entries').checked,
@@ -735,25 +784,37 @@
     function setDatePreset(preset) {
       const fromInput = document.getElementById('quick-from-date');
       const toInput = document.getElementById('quick-to-date');
+      const now = new Date();
+      const y = now.getFullYear();
+      const m = String(now.getMonth() + 1).padStart(2, '0');
+      const d = String(now.getDate()).padStart(2, '0');
+      const todayStr = `${y}-${m}-${d}`;
+
       if (preset === '1apr') {
         fromInput.value = '2026-04-01';
         toInput.value = '2026-04-01';
       } else if (preset === 'month') {
-        fromInput.value = '2026-04-01';
-        toInput.value = '2026-04-30';
+        fromInput.value = `${y}-${m}-01`;
+        // Last day of current month
+        const lastDay = new Date(y, now.getMonth() + 1, 0).getDate();
+        toInput.value = `${y}-${m}-${String(lastDay).padStart(2, '0')}`;
       } else if (preset === 'today') {
-        const now = new Date();
-        const y = now.getFullYear();
-        const m = String(now.getMonth() + 1).padStart(2, '0');
-        const d = String(now.getDate()).padStart(2, '0');
-        fromInput.value = `${y}-${m}-${d}`;
-        toInput.value = `${y}-${m}-${d}`;
+        fromInput.value = todayStr;
+        toInput.value = todayStr;
+      }
+
+      // Auto-switch to customRange mode when a preset is chosen
+      const modeEl = document.getElementById('quick-period-mode');
+      if (modeEl) {
+        modeEl.value = 'customRange';
+        toggleQuickDateFields();
       }
     }
 
     async function triggerQuickSend() {
       const rawInput = document.getElementById('quick-receiver-email').value.trim();
       const reportType = document.getElementById('quick-report-type').value;
+      const periodMode = (document.getElementById('quick-period-mode')?.value) || 'customRange';
 
       const emails = parseEmails(rawInput);
       const err = validateRecipientList(emails, 'Receiver', true);
@@ -763,16 +824,33 @@
         return;
       }
 
-      const fromVal = document.getElementById('quick-from-date')?.value || '';
-      const toVal = document.getElementById('quick-to-date')?.value || fromVal;
+      let fromDate = undefined;
+      let toDate = undefined;
 
-      const fromDate = fromVal ? fromVal.replace(/-/g, '') : undefined;
-      const toDate = toVal ? toVal.replace(/-/g, '') : fromDate;
+      if (periodMode === 'customRange') {
+        const fromVal = document.getElementById('quick-from-date')?.value || '';
+        const toVal = document.getElementById('quick-to-date')?.value || fromVal;
+
+        if (!fromVal) {
+          showAlert('Please select a From Date for Date Range mode.', false);
+          document.getElementById('quick-from-date')?.focus();
+          return;
+        }
+
+        fromDate = fromVal.replace(/-/g, '');
+        toDate = toVal.replace(/-/g, '');
+
+        if (fromDate > toDate) {
+          showAlert(`From Date (${fromVal}) must not be after To Date (${toVal}).`, false);
+          document.getElementById('quick-from-date')?.focus();
+          return;
+        }
+      }
 
       const payload = {
         receiverEmail: emails.join(', '),
         reportType: reportType,
-        periodMode: 'customRange',
+        periodMode: periodMode,
         fromDate: fromDate,
         toDate: toDate,
       };

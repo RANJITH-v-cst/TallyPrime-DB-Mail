@@ -1,6 +1,7 @@
 import { IExporter, ExportOptions, ExporterResult } from './types';
 import { TallyClient } from '../client';
 import { logger } from '../../utils/logger';
+import { escapeXml } from '../../utils/xmlHelper';
 
 export class NativeExcelExporter implements IExporter {
   public readonly name = 'NativeExcelExporter';
@@ -23,12 +24,17 @@ export class NativeExcelExporter implements IExporter {
     const { companyName, config, fromDate, toDate } = options;
     const reportId = options.reportId || 'Day Book';
     const explodeFlag = config.detailed ? 'Yes' : 'No';
+    const safeCompany = escapeXml(companyName);
 
+    // Bug 4 fix: if more than one voucher type, omit the VOUCHERTYPENAME filter
+    // and let xmlRebuildExporter handle in-memory filtering, or export all.
+    // For native exporter we only support a single type filter via VOUCHERTYPENAME.
+    // Multiple types → export all, filter in xmlRebuild path (native doesn't support OR).
     let voucherTypeFilter = '';
-    if (config.voucherTypes && config.voucherTypes.length > 0 && reportId === 'Day Book') {
-      // In Tally static variables, VOUCHERTYPENAME can filter by voucher type
-      voucherTypeFilter = `    <VOUCHERTYPENAME>${config.voucherTypes[0]}</VOUCHERTYPENAME>\n`;
+    if (config.voucherTypes && config.voucherTypes.length === 1 && reportId === 'Day Book') {
+      voucherTypeFilter = `    <VOUCHERTYPENAME>${escapeXml(config.voucherTypes[0])}</VOUCHERTYPENAME>\n`;
     }
+    // If multiple types: skip VOUCHERTYPENAME — xmlRebuildExporter filters in-memory via options.config.voucherTypes
 
     return `<ENVELOPE>
  <HEADER>
@@ -40,7 +46,7 @@ export class NativeExcelExporter implements IExporter {
  <BODY>
   <DESC>
    <STATICVARIABLES>
-    <SVCURRENTCOMPANY>${companyName}</SVCURRENTCOMPANY>
+    <SVCURRENTCOMPANY>${safeCompany}</SVCURRENTCOMPANY>
     <SVFROMDATE>${fromDate}</SVFROMDATE>
     <SVTODATE>${toDate}</SVTODATE>
     <EXPLODEFLAG>${explodeFlag}</EXPLODEFLAG>

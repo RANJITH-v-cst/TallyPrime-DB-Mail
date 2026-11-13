@@ -4,15 +4,7 @@ import { VoucherEntry } from '../../config/types';
 import { logger } from '../../utils/logger';
 import { XMLParser } from 'fast-xml-parser';
 import ExcelJS from 'exceljs';
-
-function escapeXml(str: string): string {
-  if (!str) return '';
-  return str
-    .replace(/&/g, '&amp;')
-    .replace(/</g, '&lt;')
-    .replace(/>/g, '&gt;')
-    .replace(/"/g, '&quot;');
-}
+import { escapeXml } from '../../utils/xmlHelper';
 
 /**
  * Extracts plain string text from any parsed XML node value,

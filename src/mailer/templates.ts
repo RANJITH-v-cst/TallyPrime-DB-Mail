@@ -15,9 +15,14 @@ export function formatDateTime(d: Date = new Date()): string {
 
 /**
  * Generates email subject from template with placeholders:
- * {CompanyCount}, {dd-MMM-yyyy HH:mm}, {dd-MMM-yyyy}, {HH:mm}
+ * {CompanyCount}, {dd-MMM-yyyy HH:mm}, {dd-MMM-yyyy}, {HH:mm}, {Period}
  */
-export function buildSubject(template: string, companyCount: number, date: Date = new Date()): string {
+export function buildSubject(
+  template: string,
+  companyCount: number,
+  date: Date = new Date(),
+  periodText?: string
+): string {
   const formattedDateTime = formatDateTime(date);
   const months = ['Jan', 'Feb', 'Mar', 'Apr', 'May', 'Jun', 'Jul', 'Aug', 'Sep', 'Oct', 'Nov', 'Dec'];
   const dd = date.getDate().toString().padStart(2, '0');
@@ -26,11 +31,21 @@ export function buildSubject(template: string, companyCount: number, date: Date 
   const hh = date.getHours().toString().padStart(2, '0');
   const mm = date.getMinutes().toString().padStart(2, '0');
 
-  return template
+  let subj = template
     .replace(/\{CompanyCount\}/gi, companyCount.toString())
     .replace(/\{dd-MMM-yyyy HH:mm\}/gi, formattedDateTime)
     .replace(/\{dd-MMM-yyyy\}/gi, `${dd}-${mmm}-${yyyy}`)
     .replace(/\{HH:mm\}/gi, `${hh}:${mm}`);
+
+  if (periodText && periodText !== '--') {
+    if (/\{Period\}/i.test(subj)) {
+      subj = subj.replace(/\{Period\}/gi, periodText);
+    } else {
+      subj = `${subj} (${periodText})`;
+    }
+  }
+
+  return subj;
 }
 
 /**

@@ -168,7 +168,8 @@ export class MailerService {
       }
     }
 
-    const subject = buildSubject(config.mail.subjectTemplate, summary.totalCompanies, date);
+    const samplePeriod = summary.results.find((r) => r.periodText && r.periodText !== '--')?.periodText;
+    const subject = buildSubject(config.mail.subjectTemplate, summary.totalCompanies, date, samplePeriod);
     const html = buildExportEmailHtml(summary, config.dayBook.periodMode);
 
     return this.sendWithRetry({

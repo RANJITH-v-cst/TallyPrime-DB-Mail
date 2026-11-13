@@ -77,11 +77,22 @@ export class ExportOrchestrator {
     const cycleDateStr = this.toYyyyMmDd(startTime);
 
     // Always reload latest configuration from disk so edits/recipient updates are picked up without restart
-    try {
-      const freshConfig = loadConfig();
-      this.updateConfig(freshConfig);
-    } catch (e: any) {
-      logger.warn(`Could not reload config from disk, using in-memory config: ${e.message}`);
+    // (Skip in test environments so custom mock test configurations aren't overwritten)
+    if (process.env.NODE_ENV !== 'test') {
+      try {
+        const freshConfig = loadConfig();
+        this.updateConfig(freshConfig);
+      } catch (e: any) {
+        logger.warn(`Could not reload config from disk, using in-memory config: ${e.message}`);
+      }
+    }
+
+    // Bug 1 fix: if overrideOptions has fromDate+toDate, force periodMode to customRange
+    // so that a saved config with periodMode "today" does NOT silently wipe the override.
+    if (overrideOptions?.fromDate && overrideOptions?.toDate) {
+      overrideOptions.periodMode = 'customRange';
+    } else if (!overrideOptions?.periodMode && overrideOptions?.fromDate) {
+      overrideOptions.periodMode = 'customRange';
     }
 
     const activeReportType = overrideOptions?.reportType || this.config.dayBook.reportType || 'Day Book';
@@ -163,10 +174,22 @@ export class ExportOrchestrator {
           continue;
         }
 
-        // Export each requested report for this company
+        // Export each requested report for this company (Bug 5: catch per-company errors, continue rest)
         for (const rep of reportsToExport) {
-          const result = await this.exportSingleCompany(company, cycleDateStr, rep, exportFolder, overrideOptions);
-          results.push(result);
+          try {
+            const result = await this.exportSingleCompany(company, cycleDateStr, rep, exportFolder, overrideOptions);
+            results.push(result);
+          } catch (compErr: any) {
+            logger.error(`Export failed for company "${company}" (${rep}): ${compErr.message}`);
+            results.push({
+              companyName: rep === 'Day Book' ? company : `${company} (${rep})`,
+              status: 'FAILED',
+              voucherCount: 0,
+              periodText: '--',
+              generatedAt: formatDateTime(new Date()),
+              error: compErr.message,
+            });
+          }
         }
       }
 
@@ -203,20 +226,34 @@ export class ExportOrchestrator {
         ? parseEmailList(overrideOptions.recipients)
         : parseEmailList(this.config.mail.recipients.to);
 
+      // Bug 8: Block sending if no valid, non-placeholder recipients
+      const PLACEHOLDER_RE = /@(?:[a-zA-Z0-9-]+\.)*example\.(?:com|org|net)$/i;
+      const realRecipients = effectiveRecipients.filter(r => !PLACEHOLDER_RE.test(r));
+      if (realRecipients.length === 0) {
+        const recipientError = effectiveRecipients.length === 0
+          ? 'No To recipients configured. Please set a real email address in Settings.'
+          : 'All To recipients use placeholder domain (example.com). Please set real email addresses in Settings.';
+        logger.error(recipientError);
+        summary.emailSent = false;
+        summary.emailError = recipientError;
+        this.stateManager.setLastCycleTime(new Date().toISOString());
+        return summary;
+      }
+
       const effectiveConfig: AppConfig = {
         ...this.config,
         mail: {
           ...this.config.mail,
           recipients: {
             ...this.config.mail.recipients,
-            to: effectiveRecipients,
+            to: realRecipients,
             cc: parseEmailList(this.config.mail.recipients.cc),
             bcc: parseEmailList(this.config.mail.recipients.bcc),
           },
         },
       };
 
-      const toCount = effectiveRecipients.length;
+      const toCount = realRecipients.length;
       const ccCount = effectiveConfig.mail.recipients.cc?.length || 0;
       const bccCount = effectiveConfig.mail.recipients.bcc?.length || 0;
       logger.info(`Dispatching export summary email for ${results.length} export(s) to ${toCount} recipient(s) (CC: ${ccCount}, BCC: ${bccCount})...`);
@@ -255,16 +292,35 @@ export class ExportOrchestrator {
     overrideOptions?: CycleOverrideOptions
   ): Promise<CompanyExportResult> {
     const compState = this.stateManager.getCompanyState(companyName);
-    const periodMode = overrideOptions?.periodMode || (overrideOptions?.fromDate ? 'customRange' : this.config.dayBook.periodMode);
 
+    // Bug 1: Determine effective periodMode and dates.
+    // 1. If overrideOptions has fromDate/toDate, use them (overrides saved dates for this run only)
+    // 2. If overrideOptions explicitly sets periodMode (e.g. 'today'), respect it
+    // 3. If config has saved fromDate & toDate, export the range even if old periodMode was "today"
+    let effectivePeriodMode: 'today' | 'sinceLastRun' | 'customRange';
     let fromDate = todayStr;
     let toDate = todayStr;
     let sinceAlterId: number | undefined = undefined;
 
-    if (periodMode === 'customRange') {
-      fromDate = overrideOptions?.fromDate || this.config.dayBook.fromDate || todayStr;
-      toDate = overrideOptions?.toDate || this.config.dayBook.toDate || todayStr;
-    } else if (periodMode === 'sinceLastRun' && reportName === 'Day Book') {
+    if (overrideOptions?.fromDate && overrideOptions?.toDate) {
+      effectivePeriodMode = 'customRange';
+      fromDate = overrideOptions.fromDate;
+      toDate = overrideOptions.toDate;
+    } else if (overrideOptions?.periodMode) {
+      effectivePeriodMode = overrideOptions.periodMode;
+      if (effectivePeriodMode === 'customRange') {
+        fromDate = overrideOptions.fromDate || this.config.dayBook.fromDate || todayStr;
+        toDate = overrideOptions.toDate || this.config.dayBook.toDate || todayStr;
+      }
+    } else if (this.config.dayBook.fromDate && this.config.dayBook.toDate) {
+      effectivePeriodMode = 'customRange';
+      fromDate = this.config.dayBook.fromDate;
+      toDate = this.config.dayBook.toDate;
+    } else {
+      effectivePeriodMode = this.config.dayBook.periodMode;
+    }
+
+    if (effectivePeriodMode === 'sinceLastRun' && reportName === 'Day Book') {
       // Midnight rollover check
       const isNewDay = this.stateManager.isMidnightRollover(companyName, todayStr);
       if (isNewDay) {
@@ -327,9 +383,10 @@ export class ExportOrchestrator {
         };
       }
 
-      // Determine new max Alter ID for sinceLastRun
+      // Bug 7: Only update lastMaxAlterId for sinceLastRun mode.
+      // For customRange and today, preserve the existing alterId so sinceLastRun isn't polluted.
       let maxAlterId = compState.lastMaxAlterId || 0;
-      if (exportRes.vouchers && exportRes.vouchers.length > 0) {
+      if (effectivePeriodMode === 'sinceLastRun' && exportRes.vouchers && exportRes.vouchers.length > 0) {
         for (const v of exportRes.vouchers) {
           if (v.alterId && v.alterId > maxAlterId) {
             maxAlterId = v.alterId;
@@ -346,7 +403,14 @@ export class ExportOrchestrator {
         lastError: undefined,
       });
 
-      const fileName = buildExportFileName(companyName, new Date(), reportName);
+      // Bug 6: Use date-range filename for customRange exports
+      const fileName = buildExportFileName(
+        companyName,
+        new Date(),
+        reportName,
+        effectivePeriodMode === 'customRange' ? fromDate : undefined,
+        effectivePeriodMode === 'customRange' ? toDate : undefined
+      );
       const savedInfo = saveFileWithLockProtection(exportFolder, fileName, exportRes.fileBuffer);
 
       return {

@@ -1,5 +1,5 @@
 import { parseEmailList, isValidEmail, isPlaceholderDomain, validateEmailList } from '../src/utils/emailValidator';
-import { mergeConfig, DEFAULT_CONFIG } from '../src/config/config';
+import { mergeConfig, DEFAULT_CONFIG, validateConfig } from '../src/config/config';
 import { AppConfig } from '../src/config/types';
 
 describe('Recipient Email Parser & Validator Unit Tests', () => {
@@ -141,6 +141,67 @@ describe('Recipient Email Parser & Validator Unit Tests', () => {
       const merged = mergeConfig(existingConfig, incoming);
       expect(merged.mail.recipients.to).toEqual(['first@domain.com', 'second@domain.com']);
       expect(merged.mail.recipients.cc).toEqual(['cc1@domain.com']);
+    });
+  });
+
+  describe('Date Range Configuration Validation (validateConfig)', () => {
+    test('should reject when fromDate is greater than toDate', () => {
+      const cfg: Partial<AppConfig> = {
+        ...DEFAULT_CONFIG,
+        dayBook: {
+          ...DEFAULT_CONFIG.dayBook,
+          periodMode: 'customRange',
+          fromDate: '20261115',
+          toDate: '20261110',
+        },
+      };
+      const res = validateConfig(cfg);
+      expect(res.valid).toBe(false);
+      expect(res.errors.some((e) => e.includes('cannot be after To Date'))).toBe(true);
+    });
+
+    test('should reject invalid date format like hyphenated or text string', () => {
+      const cfg: Partial<AppConfig> = {
+        ...DEFAULT_CONFIG,
+        dayBook: {
+          ...DEFAULT_CONFIG.dayBook,
+          periodMode: 'customRange',
+          fromDate: '2026-11-01',
+          toDate: '20261112',
+        },
+      };
+      const res = validateConfig(cfg);
+      expect(res.valid).toBe(false);
+      expect(res.errors.some((e) => e.includes('not a valid calendar date'))).toBe(true);
+    });
+
+    test('should reject non-existent calendar date like 31-Feb', () => {
+      const cfg: Partial<AppConfig> = {
+        ...DEFAULT_CONFIG,
+        dayBook: {
+          ...DEFAULT_CONFIG.dayBook,
+          periodMode: 'customRange',
+          fromDate: '20260231',
+          toDate: '20260305',
+        },
+      };
+      const res = validateConfig(cfg);
+      expect(res.valid).toBe(false);
+      expect(res.errors.some((e) => e.includes('not a valid calendar date'))).toBe(true);
+    });
+
+    test('should accept valid calendar date range in YYYYMMDD format', () => {
+      const cfg: Partial<AppConfig> = {
+        ...DEFAULT_CONFIG,
+        dayBook: {
+          ...DEFAULT_CONFIG.dayBook,
+          periodMode: 'customRange',
+          fromDate: '20261101',
+          toDate: '20261112',
+        },
+      };
+      const res = validateConfig(cfg);
+      expect(res.errors.filter((e) => e.includes('Date'))).toHaveLength(0);
     });
   });
 });

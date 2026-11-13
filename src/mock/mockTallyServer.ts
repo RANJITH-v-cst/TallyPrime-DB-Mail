@@ -6,10 +6,28 @@ const PORT = 9000;
 export const MOCK_COMPANIES = [
   'Acme Corp Ltd',
   'Starlight Industries Pvt Ltd',
-  'Apex Logistics',
+  'A & B Traders',
   'Nova Global Trading',
   'Zenith Enterprises',
 ];
+
+export interface MockRecordedRequest {
+  companyName: string;
+  svFromDate?: string;
+  svToDate?: string;
+  voucherTypeName?: string;
+  body: string;
+}
+
+export const recordedRequests: MockRecordedRequest[] = [];
+export function clearRecordedRequests(): void {
+  recordedRequests.length = 0;
+}
+
+let mockFailingCompany: string | null = null;
+export function setMockFailingCompany(comp: string | null): void {
+  mockFailingCompany = comp;
+}
 
 /**
  * Creates a sample XLSX buffer with PK magic header
@@ -122,6 +140,50 @@ function generateSampleVouchersXml(companyName: string): string {
       <AMOUNT>42500.00</AMOUNT>
      </ALLLEDGERENTRIES.LIST>
     </VOUCHER>
+
+    <!-- Voucher 4: Contra -->
+    <VOUCHER>
+     <DATE>20261112</DATE>
+     <VOUCHERTYPENAME>Contra</VOUCHERTYPENAME>
+     <VOUCHERNUMBER>CNT-101</VOUCHERNUMBER>
+     <PARTYLEDGERNAME>Cash Account</PARTYLEDGERNAME>
+     <NARRATION>Cash deposited into HDFC Bank</NARRATION>
+     <AMOUNT>15000.00</AMOUNT>
+     <ALTERID>10054</ALTERID>
+     <MASTERID>5004</MASTERID>
+     <ALLLEDGERENTRIES.LIST>
+      <LEDGERNAME>HDFC Bank Current A/c</LEDGERNAME>
+      <ISDEEMEDPOSITIVE>Yes</ISDEEMEDPOSITIVE>
+      <AMOUNT>-15000.00</AMOUNT>
+     </ALLLEDGERENTRIES.LIST>
+      <ALLLEDGERENTRIES.LIST>
+      <LEDGERNAME>Cash Account</LEDGERNAME>
+      <ISDEEMEDPOSITIVE>No</ISDEEMEDPOSITIVE>
+      <AMOUNT>15000.00</AMOUNT>
+     </ALLLEDGERENTRIES.LIST>
+    </VOUCHER>
+
+    <!-- Voucher 5: Journal -->
+    <VOUCHER>
+     <DATE>20261112</DATE>
+     <VOUCHERTYPENAME>Journal</VOUCHERTYPENAME>
+     <VOUCHERNUMBER>JRN-099</VOUCHERNUMBER>
+     <PARTYLEDGERNAME>Audit Expense</PARTYLEDGERNAME>
+     <NARRATION>Provision for audit fees</NARRATION>
+     <AMOUNT>20000.00</AMOUNT>
+     <ALTERID>10055</ALTERID>
+     <MASTERID>5005</MASTERID>
+     <ALLLEDGERENTRIES.LIST>
+      <LEDGERNAME>Audit Expense</LEDGERNAME>
+      <ISDEEMEDPOSITIVE>Yes</ISDEEMEDPOSITIVE>
+      <AMOUNT>-20000.00</AMOUNT>
+     </ALLLEDGERENTRIES.LIST>
+     <ALLLEDGERENTRIES.LIST>
+      <LEDGERNAME>Audit Fees Payable</LEDGERNAME>
+      <ISDEEMEDPOSITIVE>No</ISDEEMEDPOSITIVE>
+      <AMOUNT>20000.00</AMOUNT>
+     </ALLLEDGERENTRIES.LIST>
+    </VOUCHER>
    </COLLECTION>
   </DATA>
  </BODY>
@@ -145,7 +207,7 @@ export function startMockTallyServer(port = PORT, mode: 'native' | 'fallback_xml
  <BODY>
   <DATA>
    <COLLECTION>
-    ${MOCK_COMPANIES.map((c) => `<COMPANY NAME="${c}"><NAME>${c}</NAME></COMPANY>`).join('\n    ')}
+    ${MOCK_COMPANIES.map((c) => `<COMPANY NAME="${c.replace(/&/g, '&amp;')}"><NAME>${c.replace(/&/g, '&amp;')}</NAME></COMPANY>`).join('\n    ')}
    </COLLECTION>
   </DATA>
  </BODY>
@@ -154,12 +216,35 @@ export function startMockTallyServer(port = PORT, mode: 'native' | 'fallback_xml
           return res.end(companiesXml);
         }
 
-        // Extract requested company
+        // Extract requested company and dates
         const compMatch = body.match(/<SVCURRENTCOMPANY>([^<]+)<\/SVCURRENTCOMPANY>/i);
-        const companyName = compMatch ? compMatch[1].trim() : 'Company';
+        const rawCompany = compMatch ? compMatch[1].trim() : 'Company';
+        const companyName = rawCompany.replace(/&amp;/g, '&');
+
+        const fromMatch = body.match(/<SVFROMDATE[^>]*>([^<]+)<\/SVFROMDATE>/i);
+        const toMatch = body.match(/<SVTODATE[^>]*>([^<]+)<\/SVTODATE>/i);
+        const vchTypeMatch = body.match(/<VOUCHERTYPENAME[^>]*>([^<]+)<\/VOUCHERTYPENAME>/i);
+
+        const svFromDate = fromMatch ? fromMatch[1].trim() : undefined;
+        const svToDate = toMatch ? toMatch[1].trim() : undefined;
+        const voucherTypeName = vchTypeMatch ? vchTypeMatch[1].trim() : undefined;
+
+        recordedRequests.push({
+          companyName,
+          svFromDate,
+          svToDate,
+          voucherTypeName,
+          body,
+        });
+
+        // Simulate company failure if configured
+        if (mockFailingCompany && companyName.toLowerCase() === mockFailingCompany.toLowerCase()) {
+          res.writeHead(500, { 'Content-Type': 'text/xml;charset=utf-8' });
+          return res.end('<RESPONSE><STATUS>0</STATUS><LINEERROR>Simulated Company Export Failure</LINEERROR></RESPONSE>');
+        }
 
         // 2. Day Book Vouchers XML collection query (XmlRebuildExporter)
-        if (body.includes('DayBookVoucherColl') || body.includes('<TYPE>Voucher</TYPE>')) {
+        if (body.includes('DayBookVoucherColl') || body.includes('ADV DayBook Coll') || body.includes('<TYPE>Voucher</TYPE>')) {
           const xml = generateSampleVouchersXml(companyName);
           res.writeHead(200, { 'Content-Type': 'text/xml;charset=utf-8' });
           return res.end(xml);
