@@ -170,7 +170,9 @@ export class MailerService {
 
     const samplePeriod = summary.results.find((r) => r.periodText && r.periodText !== '--')?.periodText;
     const subject = buildSubject(config.mail.subjectTemplate, summary.totalCompanies, date, samplePeriod);
-    const html = buildExportEmailHtml(summary, config.dayBook.periodMode);
+    // Show the mode that was actually used (a Send Now date range overrides the saved period mode)
+    const usedDateRange = summary.results.some((r) => r.periodText && r.periodText.includes(' to '));
+    const html = buildExportEmailHtml(summary, usedDateRange ? 'customRange' : config.dayBook.periodMode);
 
     return this.sendWithRetry({
       from: config.smtp.from || config.smtp.user,

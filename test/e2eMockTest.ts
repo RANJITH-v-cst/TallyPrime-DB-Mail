@@ -19,6 +19,24 @@ import { encryptPassword } from '../src/utils/crypto';
 import * as path from 'path';
 import * as fs from 'fs';
 
+function normalizeToYmd(d?: string): string {
+  if (!d) return '';
+  const trimmed = d.trim();
+  if (/^\d{8}$/.test(trimmed)) return trimmed;
+  const parts = trimmed.split('-');
+  if (parts.length === 3) {
+    const day = parts[0].padStart(2, '0');
+    const monthMap: Record<string, string> = {
+      jan: '01', feb: '02', mar: '03', apr: '04', may: '05', jun: '06',
+      jul: '07', aug: '08', sep: '09', oct: '10', nov: '11', dec: '12',
+    };
+    const m = monthMap[parts[1].toLowerCase()] || '01';
+    const y = parts[2];
+    return `${y}${m}${day}`;
+  }
+  return trimmed.replace(/\D/g, '');
+}
+
 async function runEndToEndVerification() {
   console.log('\n============================================================');
   console.log('🚀 STARTING TALLYDAYBOOKMAILER END-TO-END ACCEPTANCE TESTS');
@@ -139,7 +157,7 @@ async function runEndToEndVerification() {
       throw new Error(`Expected at least 5 export requests to Tally, found ${exportRequests.length}`);
     }
     for (const req of exportRequests) {
-      if (req.svFromDate !== '20261101' || req.svToDate !== '20261112') {
+      if (normalizeToYmd(req.svFromDate) !== '20261101' || normalizeToYmd(req.svToDate) !== '20261112') {
         throw new Error(
           `Request for "${req.companyName}" had incorrect dates: SVFROMDATE=${req.svFromDate}, SVTODATE=${req.svToDate}`
         );
@@ -197,7 +215,7 @@ async function runEndToEndVerification() {
 
     const test2Requests = recordedRequests.filter((r) => r.body.includes('<ID>Day Book</ID>') || r.body.includes('ADV DayBook Coll'));
     for (const req of test2Requests) {
-      if (req.svFromDate !== '20261101' || req.svToDate !== '20261112') {
+      if (normalizeToYmd(req.svFromDate) !== '20261101' || normalizeToYmd(req.svToDate) !== '20261112') {
         throw new Error(
           `Legacy today config was not overridden by saved date range! Got SVFROMDATE=${req.svFromDate}, SVTODATE=${req.svToDate}`
         );
@@ -365,7 +383,7 @@ async function runEndToEndVerification() {
 
     const run1Requests = recordedRequests.filter((r) => r.body.includes('<ID>Day Book</ID>') || r.body.includes('ADV DayBook Coll'));
     for (const req of run1Requests) {
-      if (req.svFromDate !== '20261105' || req.svToDate !== '20261108') {
+      if (normalizeToYmd(req.svFromDate) !== '20261105' || normalizeToYmd(req.svToDate) !== '20261108') {
         throw new Error(
           `Override dates not applied! Expected 20261105 to 20261108, got ${req.svFromDate} to ${req.svToDate}`
         );
@@ -380,7 +398,7 @@ async function runEndToEndVerification() {
 
     const run2Requests = recordedRequests.filter((r) => r.body.includes('<ID>Day Book</ID>') || r.body.includes('ADV DayBook Coll'));
     for (const req of run2Requests) {
-      if (req.svFromDate !== '20261101' || req.svToDate !== '20261112') {
+      if (normalizeToYmd(req.svFromDate) !== '20261101' || normalizeToYmd(req.svToDate) !== '20261112') {
         throw new Error(
           `Subsequent run did not revert to saved dates! Expected 20261101 to 20261112, got ${req.svFromDate} to ${req.svToDate}`
         );

@@ -56,9 +56,12 @@ function extractNumber(val: any): number {
   return 0;
 }
 
+type DateStyle = 'ymd-typed' | 'ymd' | 'dmy';
+
 export class XmlRebuildExporter implements IExporter {
   public readonly name = 'XmlRebuildExporter';
   private parser: XMLParser;
+  private preferredStyle: DateStyle | undefined;
 
   constructor(private tallyClient: TallyClient) {
     this.parser = new XMLParser({
@@ -73,7 +76,7 @@ export class XmlRebuildExporter implements IExporter {
    * Builds the official Tally Day Book XML export request (Alt+E XML format)
    * Requests native Day Book report with EXPLODEFLAG=Yes and SVEXPORTFORMAT=$$SysName:XML
    */
-  public buildDayBookReportXml(options: ExportOptions): string {
+  public buildDayBookReportXml(options: ExportOptions, style: DateStyle = 'ymd-typed'): string {
     const { companyName, fromDate, toDate } = options;
     const safeCompany = escapeXml(companyName);
 
@@ -89,8 +92,7 @@ export class XmlRebuildExporter implements IExporter {
    <STATICVARIABLES>
     <SVEXPORTFORMAT>$$SysName:XML</SVEXPORTFORMAT>
     <SVCURRENTCOMPANY>${safeCompany}</SVCURRENTCOMPANY>
-    <SVFROMDATE TYPE="Date">${fromDate}</SVFROMDATE>
-    <SVTODATE TYPE="Date">${toDate}</SVTODATE>
+    ${this.dateTags(fromDate, toDate, style)}
     <EXPLODEFLAG>Yes</EXPLODEFLAG>
    </STATICVARIABLES>
   </DESC>
@@ -101,7 +103,7 @@ export class XmlRebuildExporter implements IExporter {
   /**
    * Builds fallback Tally Collection XML to fetch Vouchers with all required fields
    */
-  public buildVoucherFetchXml(options: ExportOptions): string {
+  public buildVoucherFetchXml(options: ExportOptions, style: DateStyle = 'ymd-typed'): string {
     const { companyName, fromDate, toDate } = options;
     const safeCompany = escapeXml(companyName);
 
@@ -116,8 +118,7 @@ export class XmlRebuildExporter implements IExporter {
   <DESC>
    <STATICVARIABLES>
     <SVCURRENTCOMPANY>${safeCompany}</SVCURRENTCOMPANY>
-    <SVFROMDATE TYPE="Date">${fromDate}</SVFROMDATE>
-    <SVTODATE TYPE="Date">${toDate}</SVTODATE>
+    ${this.dateTags(fromDate, toDate, style)}
     <SVEXPORTFORMAT>$$SysName:XML</SVEXPORTFORMAT>
    </STATICVARIABLES>
    <TDL>
@@ -298,6 +299,58 @@ export class XmlRebuildExporter implements IExporter {
 
     search(obj);
     return vouchers;
+  }
+
+  private toDmy(raw: string): string {
+    const c = (raw || '').replace(/\D/g, '');
+    if (c.length !== 8) return raw;
+    const months = ['Jan','Feb','Mar','Apr','May','Jun','Jul','Aug','Sep','Oct','Nov','Dec'];
+    return `${parseInt(c.substring(6, 8), 10)}-${months[parseInt(c.substring(4, 6), 10) - 1]}-${c.substring(0, 4)}`;
+  }
+
+  public dateTags(fromDate: string, toDate: string, style: DateStyle = 'ymd-typed'): string {
+    const attr = style === 'ymd-typed' ? ' TYPE="Date"' : '';
+    const f = style === 'dmy' ? this.toDmy(fromDate) : fromDate;
+    const t = style === 'dmy' ? this.toDmy(toDate) : toDate;
+    return `<SVFROMDATE${attr}>${f}</SVFROMDATE>\n    <SVTODATE${attr}>${t}</SVTODATE>`;
+  }
+
+  private dateSpan(vs: VoucherEntry[]): string {
+    const ds = vs.map((v) => (v.date || '').replace(/\D/g, '')).filter((d) => d.length === 8).sort();
+    return ds.length ? `${ds[0]}..${ds[ds.length - 1]}` : 'n/a';
+  }
+
+  private logTallyError(xml: string, ctx: string): void {
+    const m = xml ? xml.match(/<LINEERROR>([^<]*)<\/LINEERROR>/i) : null;
+    if (m) logger.warn(`${ctx}: Tally reported an error: ${m[1].trim()}`);
+  }
+
+  private async fetchVouchersForStyle(options: ExportOptions, style: DateStyle): Promise<VoucherEntry[]> {
+    const inRange = (vs: VoucherEntry[]) =>
+      vs.some((v) => this.isWithinRange(v.date, options.fromDate, options.toDate));
+    const ctx = `"${options.companyName}" [date style: ${style}]`;
+
+    const reportResponse = await this.tallyClient.sendXml(this.buildDayBookReportXml(options, style));
+    this.logTallyError(reportResponse, ctx);
+    const reportVouchers = this.parseVouchers(reportResponse);
+    logger.info(`${ctx}: Day Book report returned ${reportVouchers.length} voucher(s), dates ${this.dateSpan(reportVouchers)}`);
+    if (inRange(reportVouchers)) return reportVouchers;
+
+    const collResponse = await this.tallyClient.sendXml(this.buildVoucherFetchXml(options, style));
+    this.logTallyError(collResponse, ctx);
+    const collVouchers = this.parseVouchers(collResponse);
+    logger.info(`${ctx}: voucher collection returned ${collVouchers.length} voucher(s), dates ${this.dateSpan(collVouchers)}`);
+    if (inRange(collVouchers)) return collVouchers;
+
+    return collVouchers.length > 0 ? collVouchers : reportVouchers;
+  }
+
+  public isWithinRange(rawDate: string, fromDate: string, toDate: string): boolean {
+    const v = (rawDate || '').replace(/\D/g, '');
+    const f = (fromDate || '').replace(/\D/g, '');
+    const t = (toDate || '').replace(/\D/g, '');
+    if (v.length !== 8 || f.length !== 8 || t.length !== 8) return true;
+    return v >= f && v <= t;
   }
 
   /**
@@ -526,22 +579,38 @@ export class XmlRebuildExporter implements IExporter {
         `Fetching Day Book XML for "${options.companyName}" (${options.fromDate} to ${options.toDate})...`
       );
 
-      // Step 1: Send standard Day Book XML report export request
-      const reportXml = this.buildDayBookReportXml(options);
-      let responseXml = await this.tallyClient.sendXml(reportXml);
-      let vouchers = this.parseVouchers(responseXml);
+      const allStyles: DateStyle[] = ['ymd-typed', 'ymd', 'dmy'];
+      const order = this.preferredStyle
+        ? [this.preferredStyle, ...allStyles.filter((s) => s !== this.preferredStyle)]
+        : allStyles;
 
-      // Step 2: Fallback to collection export if report returned no vouchers
-      if (vouchers.length === 0) {
-        logger.info(
-          `Day Book report returned 0 vouchers, trying collection fallback for "${options.companyName}"...`
-        );
-        const collectionXml = this.buildVoucherFetchXml(options);
-        const collResponse = await this.tallyClient.sendXml(collectionXml);
-        const collVouchers = this.parseVouchers(collResponse);
-        if (collVouchers.length > 0) {
-          vouchers = collVouchers;
+      let vouchers: VoucherEntry[] = [];
+      let matched = false;
+      for (const style of order) {
+        const candidate = await this.fetchVouchersForStyle(options, style);
+        vouchers = candidate;
+        if (candidate.some((v) => this.isWithinRange(v.date, options.fromDate, options.toDate))) {
+          matched = true;
+          if (this.preferredStyle !== style) {
+            logger.info(`"${options.companyName}": Tally honored the date range using style "${style}".`);
+          }
+          this.preferredStyle = style;
+          break;
         }
+      }
+      if (!matched) {
+        logger.warn(
+          `"${options.companyName}": no vouchers inside ${options.fromDate}-${options.toDate} after trying ${order.join(', ')}. ` +
+            `Last data from Tally spanned ${this.dateSpan(vouchers)}. If TallyPrime shows vouchers for this period, check the Live Logs lines above.`
+        );
+      }
+
+      const beforeRangeFilter = vouchers.length;
+      vouchers = vouchers.filter((v) => this.isWithinRange(v.date, options.fromDate, options.toDate));
+      if (vouchers.length !== beforeRangeFilter) {
+        logger.warn(
+          `"${options.companyName}": removed ${beforeRangeFilter - vouchers.length} voucher(s) dated outside ${options.fromDate}-${options.toDate} that Tally returned.`
+        );
       }
 
       // If voucherTypes filter configured in app
