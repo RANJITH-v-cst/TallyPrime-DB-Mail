@@ -46,20 +46,20 @@ async function generateSampleExcel(companyName: string): Promise<Buffer> {
   ws.getRow(4).values = [
     'Date',
     'Particulars',
+    'Created By',
+    'Created Time',
     'Vch Type',
     'Vch No.',
     'Debit Amount',
     'Credit Amount',
-    'Created By',
-    'Created Time',
   ];
   ws.getRow(4).font = { bold: true };
 
-  ws.addRow(['12-Nov-26', 'Customer Alpha', 'Sales', 'INV-001', 54200.00, '', 'admin', '10:30 AM']);
-  ws.addRow(['12-Nov-26', 'Vendor Beta', 'Payment', 'PV-042', '', 18500.00, 'ranjith', '11:15 AM']);
-  ws.addRow(['12-Nov-26', 'Cash Account', 'Receipt', 'RV-108', 25000.00, '', 'operator1', '02:45 PM']);
+  ws.addRow(['12-Nov-26', 'Customer Alpha', 'admin', '10:30 AM', 'Sales', 'INV-001', 54200.00, '']);
+  ws.addRow(['12-Nov-26', 'Vendor Beta', 'ranjith', '11:15 AM', 'Payment', 'PV-042', '', 18500.00]);
+  ws.addRow(['12-Nov-26', 'Cash Account', 'operator1', '02:45 PM', 'Receipt', 'RV-108', 25000.00, '']);
 
-  const totalRow = ws.addRow(['', 'Total', '', '', 79200.00, 18500.00, '', '']);
+  const totalRow = ws.addRow(['', 'Total', '', '', '', '', 79200.00, 18500.00]);
   totalRow.font = { bold: true };
 
   const buf = await wb.xlsx.writeBuffer();
@@ -89,6 +89,10 @@ function generateSampleVouchersXml(companyName: string): string {
      <AMOUNT>150000.00</AMOUNT>
      <ALTERID>10051</ALTERID>
      <MASTERID>5001</MASTERID>
+     <ADVCREATEDBY>admin</ADVCREATEDBY>
+     <ADVCREATEDTIME>10:30 AM</ADVCREATEDTIME>
+     <CREATEDUSERNAME>admin</CREATEDUSERNAME>
+     <CREATEDUSERTIME>10:30 AM</CREATEDUSERTIME>
      <ALLLEDGERENTRIES.LIST>
       <LEDGERNAME>Acme Retail Buyers</LEDGERNAME>
       <ISDEEMEDPOSITIVE>Yes</ISDEEMEDPOSITIVE>
@@ -116,6 +120,10 @@ function generateSampleVouchersXml(companyName: string): string {
      <AMOUNT>85000.00</AMOUNT>
      <ALTERID>10052</ALTERID>
      <MASTERID>5002</MASTERID>
+     <ADVCREATEDBY>ranjith</ADVCREATEDBY>
+     <ADVCREATEDTIME>11:15 AM</ADVCREATEDTIME>
+     <CREATEDUSERNAME>ranjith</CREATEDUSERNAME>
+     <CREATEDUSERTIME>11:15 AM</CREATEDUSERTIME>
      <ALLLEDGERENTRIES.LIST>
       <LEDGERNAME>Global Raw Materials Ltd</LEDGERNAME>
       <ISDEEMEDPOSITIVE>Yes</ISDEEMEDPOSITIVE>
@@ -138,6 +146,10 @@ function generateSampleVouchersXml(companyName: string): string {
      <AMOUNT>42500.00</AMOUNT>
      <ALTERID>10053</ALTERID>
      <MASTERID>5003</MASTERID>
+     <ADVCREATEDBY>operator1</ADVCREATEDBY>
+     <ADVCREATEDTIME>02:45 PM</ADVCREATEDTIME>
+     <CREATEDUSERNAME>operator1</CREATEDUSERNAME>
+     <CREATEDUSERTIME>02:45 PM</CREATEDUSERTIME>
      <ALLLEDGERENTRIES.LIST>
       <LEDGERNAME>ICICI Bank Current A/c</LEDGERNAME>
       <ISDEEMEDPOSITIVE>Yes</ISDEEMEDPOSITIVE>
@@ -160,6 +172,10 @@ function generateSampleVouchersXml(companyName: string): string {
      <AMOUNT>15000.00</AMOUNT>
      <ALTERID>10054</ALTERID>
      <MASTERID>5004</MASTERID>
+     <ADVCREATEDBY>admin</ADVCREATEDBY>
+     <ADVCREATEDTIME>03:10 PM</ADVCREATEDTIME>
+     <CREATEDUSERNAME>admin</CREATEDUSERNAME>
+     <CREATEDUSERTIME>03:10 PM</CREATEDUSERTIME>
      <ALLLEDGERENTRIES.LIST>
       <LEDGERNAME>HDFC Bank Current A/c</LEDGERNAME>
       <ISDEEMEDPOSITIVE>Yes</ISDEEMEDPOSITIVE>
@@ -182,6 +198,10 @@ function generateSampleVouchersXml(companyName: string): string {
      <AMOUNT>20000.00</AMOUNT>
      <ALTERID>10055</ALTERID>
      <MASTERID>5005</MASTERID>
+     <ADVCREATEDBY>auditor</ADVCREATEDBY>
+     <ADVCREATEDTIME>04:00 PM</ADVCREATEDTIME>
+     <CREATEDUSERNAME>auditor</CREATEDUSERNAME>
+     <CREATEDUSERTIME>04:00 PM</CREATEDUSERTIME>
      <ALLLEDGERENTRIES.LIST>
       <LEDGERNAME>Audit Expense</LEDGERNAME>
       <ISDEEMEDPOSITIVE>Yes</ISDEEMEDPOSITIVE>
@@ -259,13 +279,19 @@ export function startMockTallyServer(port = PORT, mode: 'native' | 'fallback_xml
           return res.end(xml);
         }
 
-        // 3. Step 2: Native Excel Export request
+        // 3. Step 2: Native Excel Export request OR Day Book XML report export
         if (body.includes('<ID>Day Book</ID>')) {
           if (mode === 'fallback_xml') {
             // Simulate Tally returning XML or LINEERROR when Excel export fails
             const errXml = `<RESPONSE><STATUS>0</STATUS><LINEERROR>Native Excel export not supported</LINEERROR></RESPONSE>`;
             res.writeHead(200, { 'Content-Type': 'text/xml;charset=utf-8' });
             return res.end(errXml);
+          }
+
+          if (body.includes('$$SysName:XML')) {
+            const xml = generateSampleVouchersXml(companyName);
+            res.writeHead(200, { 'Content-Type': 'text/xml;charset=utf-8' });
+            return res.end(xml);
           }
 
           // Return real XLSX buffer

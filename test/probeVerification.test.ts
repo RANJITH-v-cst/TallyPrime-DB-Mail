@@ -4,7 +4,7 @@ import { startMockTallyServer } from '../src/mock/mockTallyServer';
 import { TallyClient } from '../src/tally/client';
 import { NativeExcelExporter } from '../src/tally/exporters/nativeExporter';
 import { verifyExportedExcel } from '../src/cli/probe';
-import { sanitizeFilename } from '../src/utils/sanitizer';
+import { sanitizeCompanyForFilename } from '../src/tally/exporters/nativeExporter';
 
 describe('Tally Day Book Native Probe Verification', () => {
   let server: any;
@@ -111,7 +111,7 @@ describe('Tally Day Book Native Probe Verification', () => {
     expect(result.fileBuffer).toBeDefined();
 
     // Verify debug files were written
-    const cleanName = sanitizeFilename('`Ranjith Enterprices');
+    const cleanName = sanitizeCompanyForFilename('`Ranjith Enterprices');
     const requestFile = path.join(debugDir, `${cleanName}_request.xml`);
     const responseFile = path.join(debugDir, `${cleanName}_response.xlsx`);
 

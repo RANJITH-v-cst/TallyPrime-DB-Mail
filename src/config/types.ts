@@ -7,6 +7,8 @@ export interface TallyConfig {
   host: string;
   port: number;
   timeoutMs?: number; // default 60000ms
+  companyDeadlineMs?: number; // default 120000ms (2 minutes) per-company deadline
+  cycleDeadlineMs?: number; // default 900000ms (15 minutes) per-cycle deadline
 }
 
 export interface DayBookConfig {
@@ -20,6 +22,7 @@ export interface DayBookConfig {
   exporter: ExporterType; // auto | native | xmlRebuild
   tdlFilePath?: string;   // Optional custom .tdl file path to inject into request
   tdlEnabled?: boolean;    // Toggle whether to inject custom TDL into request
+  tallyExportFolder?: string; // Folder Tally saves exports into (e.g. C:\Program Files\TallyPrime)
 }
 
 export interface ScheduleConfig {
@@ -122,6 +125,7 @@ export interface CompanyExportResult {
   generatedAt: string;
   error?: string;
   methodUsed?: 'native' | 'xmlRebuild';
+  createdColumnsStatus?: 'included' | 'missing (fallback used)';
 }
 
 export interface ExportCycleSummary {

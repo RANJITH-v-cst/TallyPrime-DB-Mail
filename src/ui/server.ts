@@ -61,6 +61,7 @@ export class WebUiServer {
         tallyConfig: {
           host: this.config.tally.host,
           port: this.config.tally.port,
+          timeoutMs: this.config.tally.timeoutMs || 60000,
         },
         intervalMinutes: this.config.schedule.intervalMinutes,
         schedule: this.config.schedule,

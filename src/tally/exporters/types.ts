@@ -8,6 +8,8 @@ export interface ExportOptions {
   sinceAlterId?: number;
   reportId?: string; // 'Day Book' or 'Balance Sheet'
   exportFolder?: string;
+  tallyExportFolder?: string;
+  signal?: AbortSignal;
 }
 
 export interface ExporterResult {

@@ -67,8 +67,9 @@ export function buildExportEmailHtml(summary: ExportCycleSummary, modeText: stri
         notes = `<span style="color: #dc2626; font-size: 11px;">Error: ${escapeHtml(r.error)}</span>`;
       } else if (typeof r.newOrAlteredCount === 'number' && modeText.includes('sinceLastRun')) {
         notes = `<span style="color: #2563eb; font-size: 11px;">${r.newOrAlteredCount} new/altered</span>`;
-      } else if (r.methodUsed) {
-        notes = `<span style="color: #6b7280; font-size: 11px;">via ${r.methodUsed}</span>`;
+      } else {
+        const colStatus = r.createdColumnsStatus || (r.methodUsed === 'native' ? 'included' : 'missing (fallback used)');
+        notes = `<span style="color: #6b7280; font-size: 11px;">Created columns: ${colStatus}</span>`;
       }
 
       return `
@@ -137,6 +138,13 @@ export function buildExportEmailHtml(summary: ExportCycleSummary, modeText: stri
           ${rows}
         </tbody>
       </table>
+      <div style="margin-top: 18px; padding-top: 14px; border-top: 1px solid #e5e7eb; font-size: 13px; color: #374151;">
+        <h4 style="margin: 0 0 8px 0; font-size: 13px; color: #1f2937;">Export Column Verification:</h4>
+        ${summary.results.map((r) => {
+          const colStatus = r.createdColumnsStatus || (r.methodUsed === 'native' ? 'included' : 'missing (fallback used)');
+          return `<div style="margin-bottom: 4px;">&bull; <strong>${escapeHtml(r.companyName)}</strong>: Created By / Created Time columns: ${colStatus}</div>`;
+        }).join('')}
+      </div>
     </div>
     <div class="footer">
       Generated automatically by <strong>TallyDayBookMailer</strong> middleware. Do not reply to this email.

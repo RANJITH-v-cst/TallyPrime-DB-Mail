@@ -1,3 +1,5 @@
+import * as fs from 'fs';
+import * as path from 'path';
 import { IExporter, ExportOptions, ExporterResult } from './types';
 import { TallyClient } from '../client';
 import { VoucherEntry } from '../../config/types';
@@ -54,6 +56,115 @@ function extractNumber(val: any): number {
     }
   }
   return 0;
+}
+
+/**
+ * Deep-searches each VOUCHER node for any key matching a regex pattern
+ * (handles direct tags, UDF: prefixes, nested .LIST nodes, and key-value descriptors).
+ */
+export function findFieldByPattern(node: any, pattern: RegExp): string {
+  if (!node || typeof node !== 'object') return '';
+
+  // 1. Direct properties of current object
+  for (const key of Object.keys(node)) {
+    if (pattern.test(key)) {
+      const val = extractText(node[key]);
+      if (val) return val;
+    }
+  }
+
+  // 2. Handle arrays (e.g. lists of tags or UDFs)
+  if (Array.isArray(node)) {
+    for (const item of node) {
+      const res = findFieldByPattern(item, pattern);
+      if (res) return res;
+    }
+  } else {
+    // Check if current node is a key-value descriptor e.g. { NAME: 'createdusername', VALUE: 'admin' }
+    const nameVal = extractText(node.NAME || node['@_NAME'] || node.UDFNAME || node.TAGNAME);
+    if (nameVal && pattern.test(nameVal)) {
+      const val = extractText(node.VALUE || node['#text'] || node.UDFVALUE || node.TEXT);
+      if (val) return val;
+    }
+
+    // Recurse into nested child objects
+    for (const key of Object.keys(node)) {
+      if (typeof node[key] === 'object' && node[key] !== null) {
+        const res = findFieldByPattern(node[key], pattern);
+        if (res) return res;
+      }
+    }
+  }
+
+  return '';
+}
+
+/**
+ * Extracts a UDF field value from either a computed tag (e.g. ADVCreatedBy / ADVCreatedTime)
+ * or the native Tally form (e.g. UDF:CREATEDUSERNAME.LIST > UDF:CREATEDUSERNAME).
+ * Uses extractText to safely unwrap fast-xml-parser objects and handles arrays.
+ */
+export function extractUdf(item: any, computeTag: string, udfName: string): string | undefined {
+  if (!item || typeof item !== 'object') return undefined;
+
+  // 1. Direct computed tag variations (e.g. ADVCreatedBy, ADVCREATEDBY, advcreatedby)
+  for (const k of [computeTag, computeTag.toUpperCase(), computeTag.toLowerCase()]) {
+    if (item[k] !== undefined) {
+      const val = extractText(item[k]);
+      if (val) return val;
+    }
+  }
+
+  // 2. Native Tally form: UDF:TAGNAME.LIST > UDF:TAGNAME (handles objects & arrays)
+  const listKeys = [
+    `UDF:${udfName.toUpperCase()}.LIST`,
+    `${udfName.toUpperCase()}.LIST`,
+    `UDF:${udfName}.LIST`,
+    `${udfName}.LIST`,
+  ];
+
+  for (const lk of listKeys) {
+    const listNode = item[lk];
+    if (listNode) {
+      const arr = Array.isArray(listNode) ? listNode : [listNode];
+      for (const entry of arr) {
+        if (!entry) continue;
+        if (typeof entry === 'string' || typeof entry === 'number') {
+          const val = extractText(entry);
+          if (val) return val;
+        }
+        if (typeof entry === 'object') {
+          for (const subKey of [`UDF:${udfName.toUpperCase()}`, udfName.toUpperCase(), `UDF:${udfName}`, udfName]) {
+            if (entry[subKey] !== undefined) {
+              const val = extractText(entry[subKey]);
+              if (val) return val;
+            }
+          }
+          const val = extractText(entry);
+          if (val) return val;
+        }
+      }
+    }
+  }
+
+  // 3. Direct UDF tag (e.g. <UDF:CREATEDUSERNAME>admin</UDF:CREATEDUSERNAME>)
+  const directKeys = [
+    `UDF:${udfName.toUpperCase()}`,
+    udfName.toUpperCase(),
+    `UDF:${udfName}`,
+    udfName,
+  ];
+  for (const dk of directKeys) {
+    if (item[dk] !== undefined) {
+      const val = extractText(item[dk]);
+      if (val) return val;
+    }
+  }
+
+  // 4. Fallback search across nested keys or key-value descriptors
+  const regex = new RegExp(`(adv)?${udfName}`, 'i');
+  const fallbackVal = findFieldByPattern(item, regex);
+  return fallbackVal || undefined;
 }
 
 type DateStyle = 'ymd-typed' | 'ymd' | 'dmy';
@@ -125,7 +236,9 @@ export class XmlRebuildExporter implements IExporter {
     <TDLMESSAGE>
      <COLLECTION NAME="ADV DayBook Coll" ISMODIFY="No" ISFIXED="No">
       <TYPE>Voucher</TYPE>
-      <FETCH>DATE, VOUCHERTYPENAME, VOUCHERNUMBER, PARTYLEDGERNAME, NARRATION, AMOUNT, ALLLEDGERENTRIES.LIST, LEDGERENTRIES.LIST, ALLINVENTORYENTRIES.LIST, ALTERID</FETCH>
+      <FETCH>DATE, VOUCHERTYPENAME, VOUCHERNUMBER, PARTYLEDGERNAME, NARRATION, AMOUNT, ALLLEDGERENTRIES.LIST, LEDGERENTRIES.LIST, ALLINVENTORYENTRIES.LIST, ALTERID, MASTERID, createdusername, createdusertime</FETCH>
+      <COMPUTE>ADVCreatedBy : $createdusername</COMPUTE>
+      <COMPUTE>ADVCreatedTime : $createdusertime</COMPUTE>
       <FILTER>ADV_DayBookFilter</FILTER>
      </COLLECTION>
      <SYSTEM TYPE="Formulae" NAME="ADV_DayBookFilter">
@@ -250,6 +363,18 @@ export class XmlRebuildExporter implements IExporter {
 
         const effectivePartyName = partyLedgerName || (ledgerEntries.length > 0 ? ledgerEntries[0].ledgerName : 'As per details');
 
+        const createdBy =
+          extractUdf(item, 'ADVCreatedBy', 'createdusername') ||
+          extractText(item.ENTEREDBY) ||
+          extractText(item.CREATEDBY) ||
+          undefined;
+
+        const createdTime =
+          extractUdf(item, 'ADVCreatedTime', 'createdusertime') ||
+          extractText(item.ENTEREDDATE) ||
+          extractText(item.CREATIONTIME) ||
+          undefined;
+
         vouchers.push({
           date: rawDate,
           voucherType: voucherType || 'Voucher',
@@ -259,6 +384,8 @@ export class XmlRebuildExporter implements IExporter {
           amount: mainAmount,
           alterId: alterId || undefined,
           masterId: masterId || undefined,
+          createdBy: createdBy || undefined,
+          createdTime: createdTime || undefined,
           ledgerEntries,
         });
       }
@@ -329,20 +456,76 @@ export class XmlRebuildExporter implements IExporter {
     const inRange = (vs: VoucherEntry[]) =>
       vs.some((v) => this.isWithinRange(v.date, options.fromDate, options.toDate));
     const ctx = `"${options.companyName}" [date style: ${style}]`;
+    const isDebugMode = process.env.DEBUG_TALLY_REQUEST === 'true';
+    const debugDir = path.resolve(process.cwd(), 'debug');
+    const safeCompForFile = (options.companyName || 'Company')
+      .replace(/^[`'"\s]+|[`'"\s]+$/g, '')
+      .replace(/[^\w.-]/g, '_');
 
-    const reportResponse = await this.tallyClient.sendXml(this.buildDayBookReportXml(options, style));
+    // 1. Fetch Day Book report XML
+    const reportXml = this.buildDayBookReportXml(options, style);
+    if (isDebugMode) {
+      if (!fs.existsSync(debugDir)) fs.mkdirSync(debugDir, { recursive: true });
+      fs.writeFileSync(path.join(debugDir, `${safeCompForFile}_report_request.xml`), reportXml, 'utf8');
+    }
+
+    const reportResponse = await this.tallyClient.sendXml(reportXml, undefined, options.signal);
+    if (isDebugMode) {
+      fs.writeFileSync(path.join(debugDir, `${safeCompForFile}_report_response.xml`), reportResponse, 'utf8');
+    }
     this.logTallyError(reportResponse, ctx);
     const reportVouchers = this.parseVouchers(reportResponse);
     logger.info(`${ctx}: Day Book report returned ${reportVouchers.length} voucher(s), dates ${this.dateSpan(reportVouchers)}`);
-    if (inRange(reportVouchers)) return reportVouchers;
 
-    const collResponse = await this.tallyClient.sendXml(this.buildVoucherFetchXml(options, style));
+    // 2. Always run the collection query (Task A.2)
+    const collXml = this.buildVoucherFetchXml(options, style);
+    if (isDebugMode) {
+      if (!fs.existsSync(debugDir)) fs.mkdirSync(debugDir, { recursive: true });
+      fs.writeFileSync(path.join(debugDir, `${safeCompForFile}_collection_request.xml`), collXml, 'utf8');
+    }
+
+    const collResponse = await this.tallyClient.sendXml(collXml, undefined, options.signal);
+    if (isDebugMode) {
+      fs.writeFileSync(path.join(debugDir, `${safeCompForFile}_collection_response.xml`), collResponse, 'utf8');
+    }
     this.logTallyError(collResponse, ctx);
     const collVouchers = this.parseVouchers(collResponse);
     logger.info(`${ctx}: voucher collection returned ${collVouchers.length} voucher(s), dates ${this.dateSpan(collVouchers)}`);
-    if (inRange(collVouchers)) return collVouchers;
 
-    return collVouchers.length > 0 ? collVouchers : reportVouchers;
+    // 3. Merge created fields into each voucher by MASTERID if available, else by key date|voucherType|voucherNumber
+    if (reportVouchers.length > 0 && collVouchers.length > 0) {
+      const collByMasterId = new Map<number, VoucherEntry>();
+      const collByKey = new Map<string, VoucherEntry>();
+
+      for (const cv of collVouchers) {
+        if (cv.masterId && cv.masterId > 0) {
+          collByMasterId.set(cv.masterId, cv);
+        }
+        const key = `${(cv.date || '').replace(/\D/g, '')}|${(cv.voucherType || '').toLowerCase().trim()}|${(cv.voucherNumber || '').toLowerCase().trim()}`;
+        collByKey.set(key, cv);
+      }
+
+      for (const rv of reportVouchers) {
+        let matched: VoucherEntry | undefined;
+        if (rv.masterId && rv.masterId > 0 && collByMasterId.has(rv.masterId)) {
+          matched = collByMasterId.get(rv.masterId);
+        } else {
+          const key = `${(rv.date || '').replace(/\D/g, '')}|${(rv.voucherType || '').toLowerCase().trim()}|${(rv.voucherNumber || '').toLowerCase().trim()}`;
+          matched = collByKey.get(key);
+        }
+
+        if (matched) {
+          if (!rv.createdBy && matched.createdBy) rv.createdBy = matched.createdBy;
+          if (!rv.createdTime && matched.createdTime) rv.createdTime = matched.createdTime;
+          if (!rv.masterId && matched.masterId) rv.masterId = matched.masterId;
+          if (!rv.alterId && matched.alterId) rv.alterId = matched.alterId;
+        }
+      }
+    }
+
+    if (inRange(reportVouchers)) return reportVouchers;
+    if (inRange(collVouchers)) return collVouchers;
+    return reportVouchers.length > 0 ? reportVouchers : collVouchers;
   }
 
   public isWithinRange(rawDate: string, fromDate: string, toDate: string): boolean {
@@ -396,12 +579,12 @@ export class XmlRebuildExporter implements IExporter {
     const numFmt = '#,##,##0.00';
 
     // 1. Title Block (Header)
-    sheet.mergeCells('A1:F1');
+    sheet.mergeCells('A1:H1');
     sheet.getCell('A1').value = options.companyName;
     sheet.getCell('A1').font = { size: 14, bold: true, name: 'Calibri' };
     sheet.getCell('A1').alignment = { horizontal: 'center' };
 
-    sheet.mergeCells('A2:F2');
+    sheet.mergeCells('A2:H2');
     sheet.getCell('A2').value = 'Day Book';
     sheet.getCell('A2').font = { size: 12, bold: true, name: 'Calibri' };
     sheet.getCell('A2').alignment = { horizontal: 'center' };
@@ -410,7 +593,7 @@ export class XmlRebuildExporter implements IExporter {
     const toFormatted = this.formatDate(options.toDate);
     const periodStr = fromFormatted === toFormatted ? fromFormatted : `${fromFormatted} to ${toFormatted}`;
 
-    sheet.mergeCells('A3:F3');
+    sheet.mergeCells('A3:H3');
     sheet.getCell('A3').value = periodStr;
     sheet.getCell('A3').font = { size: 10, italic: true, name: 'Calibri' };
     sheet.getCell('A3').alignment = { horizontal: 'center' };
@@ -418,7 +601,16 @@ export class XmlRebuildExporter implements IExporter {
     // Blank row 4
     // 2. Table Column Headers (Row 5)
     const headerRow = sheet.getRow(5);
-    headerRow.values = ['Date', 'Particulars', 'Vch Type', 'Vch No.', 'Debit Amount', 'Credit Amount'];
+    headerRow.values = [
+      'Date',
+      'Particulars',
+      'Vch Type',
+      'Vch No.',
+      'Debit Amount',
+      'Credit Amount',
+      'Created By',
+      'Created Time',
+    ];
     headerRow.font = { bold: true, name: 'Calibri', size: 11 };
     headerRow.alignment = { vertical: 'middle' };
 
@@ -427,27 +619,29 @@ export class XmlRebuildExporter implements IExporter {
       top: { style: 'thin' as const },
       bottom: { style: 'thin' as const },
     };
-    for (let c = 1; c <= 6; c++) {
+    for (let c = 1; c <= 8; c++) {
       headerRow.getCell(c).border = thinBorder;
-      if (c >= 5) {
+      if (c === 5 || c === 6 || c === 8) {
         headerRow.getCell(c).alignment = { horizontal: 'right', vertical: 'middle' };
       }
     }
 
     // Set Column Widths
     sheet.getColumn(1).width = 14; // Date
-    sheet.getColumn(2).width = 42; // Particulars
+    sheet.getColumn(2).width = 40; // Particulars
     sheet.getColumn(3).width = 16; // Vch Type
-    sheet.getColumn(4).width = 20; // Vch No.
+    sheet.getColumn(4).width = 18; // Vch No.
     sheet.getColumn(5).width = 18; // Debit Amount
     sheet.getColumn(6).width = 18; // Credit Amount
+    sheet.getColumn(7).width = 16; // Created By
+    sheet.getColumn(8).width = 14; // Created Time
 
     let currentRow = 6;
     let grandTotalDebit = 0;
     let grandTotalCredit = 0;
 
     if (vouchers.length === 0) {
-      sheet.mergeCells('A6:F6');
+      sheet.mergeCells('A6:H6');
       const emptyRow = sheet.getRow(6);
       emptyRow.getCell(1).value = 'No transactions recorded for this date';
       emptyRow.getCell(1).font = { italic: true, color: { argb: 'FF666666' } };
@@ -459,7 +653,7 @@ export class XmlRebuildExporter implements IExporter {
         const displayDate = this.formatDate(vch.date);
         const isDetailed = !!options.config.detailed;
 
-        // In Tally Day Book (see Image 2):
+        // In Tally Day Book:
         // Payment: Debits the party ledger (Debit column)
         // Sales: Debits the customer party (Debit column)
         // Purchase: Debit column
@@ -513,6 +707,13 @@ export class XmlRebuildExporter implements IExporter {
           row.getCell(6).alignment = { horizontal: 'right' };
           grandTotalCredit += vchCredit;
         }
+
+        row.getCell(7).value = vch.createdBy || '';
+        row.getCell(7).alignment = { horizontal: 'left' };
+
+        row.getCell(8).value = vch.createdTime || '';
+        row.getCell(8).alignment = { horizontal: 'right' };
+
         currentRow++;
 
         if (isDetailed) {
@@ -522,6 +723,7 @@ export class XmlRebuildExporter implements IExporter {
               const ledRow = sheet.getRow(currentRow);
               ledRow.getCell(2).value = `    ${led.ledgerName}`;
               ledRow.getCell(2).font = { italic: true, color: { argb: 'FF333333' } };
+              // Columns 7 and 8 (Created By, Created Time) remain blank on ledger sub-rows
 
               if (led.isDeemedPositive) {
                 ledRow.getCell(5).value = led.amount;
@@ -558,11 +760,13 @@ export class XmlRebuildExporter implements IExporter {
     totalRow.getCell(6).numFmt = numFmt;
     totalRow.getCell(6).font = { bold: true };
     totalRow.getCell(6).alignment = { horizontal: 'right' };
+    totalRow.getCell(7).value = '';
+    totalRow.getCell(8).value = '';
     const totalBorder = {
       top: { style: 'thin' as const },
       bottom: { style: 'double' as const },
     };
-    for (let c = 1; c <= 6; c++) {
+    for (let c = 1; c <= 8; c++) {
       totalRow.getCell(c).border = totalBorder;
     }
     // Generate buffer
@@ -581,7 +785,23 @@ export class XmlRebuildExporter implements IExporter {
       let vouchers: VoucherEntry[] = [];
       let matched = false;
       for (const style of order) {
-        const candidate = await this.fetchVouchersForStyle(options, style);
+        let candidate: VoucherEntry[];
+        try {
+          candidate = await this.fetchVouchersForStyle(options, style);
+        } catch (fetchErr: any) {
+          const isConnOrTimeout = /ECONNRESET|ECONNREFUSED|ETIMEDOUT|ECONNABORTED|timeout|socket hang up|canceled|aborted|ERR_CANCELED/i.test(
+            fetchErr.message || fetchErr.code || ''
+          );
+          if (isConnOrTimeout || options.signal?.aborted) {
+            // Task 3: Fail quickly if Tally is unresponsive/reset/timed out. Do NOT try other date styles.
+            logger.warn(
+              `"${options.companyName}": connection/timeout error on style "${style}" (${fetchErr.message}). Skipping remaining date styles.`
+            );
+            throw fetchErr;
+          }
+          throw fetchErr;
+        }
+
         vouchers = candidate;
         if (candidate.some((v) => this.isWithinRange(v.date, options.fromDate, options.toDate))) {
           matched = true;

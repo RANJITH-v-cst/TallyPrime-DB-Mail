@@ -1,5 +1,6 @@
 import * as fs from 'fs';
 import * as path from 'path';
+import ExcelJS from 'exceljs';
 import { resolveAndEnsureFolder, saveFileWithLockProtection } from '../src/utils/folderHelper';
 import { XmlRebuildExporter } from '../src/tally/exporters/xmlRebuildExporter';
 import { CompanyDiscoveryService } from '../src/tally/companyDiscovery';
@@ -92,7 +93,9 @@ describe('Export Flow and TDL Safety Tests', () => {
     expect(voucherXml).not.toContain('[Form:');
     expect(voucherXml).toContain('ADV DayBook Coll');
     expect(voucherXml).toContain('<TYPE>Voucher</TYPE>');
-    expect(voucherXml).toContain('<FETCH>DATE, VOUCHERTYPENAME, VOUCHERNUMBER, PARTYLEDGERNAME, NARRATION, AMOUNT, ALLLEDGERENTRIES.LIST, LEDGERENTRIES.LIST, ALLINVENTORYENTRIES.LIST, ALTERID</FETCH>');
+    expect(voucherXml).toContain('<FETCH>DATE, VOUCHERTYPENAME, VOUCHERNUMBER, PARTYLEDGERNAME, NARRATION, AMOUNT, ALLLEDGERENTRIES.LIST, LEDGERENTRIES.LIST, ALLINVENTORYENTRIES.LIST, ALTERID, MASTERID, createdusername, createdusertime</FETCH>');
+    expect(voucherXml).toContain('<COMPUTE>ADVCreatedBy : $createdusername</COMPUTE>');
+    expect(voucherXml).toContain('<COMPUTE>ADVCreatedTime : $createdusertime</COMPUTE>');
 
     // Standard Day Book Report XML
     const reportXml = exporter.buildDayBookReportXml({
@@ -175,6 +178,8 @@ describe('Export Flow and TDL Safety Tests', () => {
     expect(v1.voucherNumber).toBe('PAY-101');
     expect(v1.partyLedgerName).toBe('Alpha Supplies Co');
     expect(v1.amount).toBe(10000);
+    expect(v1.createdBy).toBe('admin');
+    expect(v1.createdTime).toBe('10:15 AM');
     expect(v1.ledgerEntries?.length).toBe(2);
     expect(v1.ledgerEntries?.[0].ledgerName).toBe('Alpha Supplies Co');
     expect(v1.ledgerEntries?.[0].isDeemedPositive).toBe(true); // Debit
@@ -187,6 +192,8 @@ describe('Export Flow and TDL Safety Tests', () => {
     expect(v2.voucherNumber).toBe('INV-2026-001');
     expect(v2.partyLedgerName).toBe('Beta Retailers Ltd');
     expect(v2.amount).toBe(118000);
+    expect(v2.createdBy).toBe('ranjith');
+    expect(v2.createdTime).toBe('11:30 AM');
     expect(v2.ledgerEntries?.length).toBe(5);
 
     const ledgerNames = v2.ledgerEntries?.map((l) => l.ledgerName);
@@ -209,6 +216,22 @@ describe('Export Flow and TDL Safety Tests', () => {
     // Excel file magic bytes: PK (0x50, 0x4B)
     expect(excelBuffer[0]).toBe(0x50);
     expect(excelBuffer[1]).toBe(0x4B);
+
+    // Verify sheet structure and Created By / Created Time columns
+    const wb = new ExcelJS.Workbook();
+    await wb.xlsx.load(excelBuffer as any);
+    const ws = wb.worksheets[0];
+    const headerCols = (ws.getRow(5).values as string[]).slice(1);
+    expect(headerCols).toEqual([
+      'Date',
+      'Particulars',
+      'Created By',
+      'Created Time',
+      'Vch Type',
+      'Vch No.',
+      'Debit Amount',
+      'Credit Amount',
+    ]);
   });
 
   // Test 6: Empty Tally XML or 0 vouchers produces clean empty message without ghost rows

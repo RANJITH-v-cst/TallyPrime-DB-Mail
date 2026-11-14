@@ -14,6 +14,8 @@ export const DEFAULT_CONFIG: AppConfig = {
     host: '127.0.0.1',
     port: 9000,
     timeoutMs: 60000,
+    companyDeadlineMs: 120000,
+    cycleDeadlineMs: 900000,
   },
   companies: 'auto',
   dayBook: {
@@ -23,8 +25,8 @@ export const DEFAULT_CONFIG: AppConfig = {
     detailed: true,
     skipIfNoEntries: false,
     exporter: 'auto', // Default: auto (tries Tally native Excel first to include TDL columns, falls back to xmlRebuild)
-    tdlFilePath: process.env.TDL_FILE_PATH || undefined,
-    tdlEnabled: !!process.env.TDL_FILE_PATH,
+    tdlFilePath: undefined,
+    tdlEnabled: false,
   },
   exportFolder: getDefaultExportFolder(),
   schedule: {

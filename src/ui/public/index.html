@@ -242,6 +242,11 @@
                 <div class="hint">Default port is 9000 (Tally F1 Help > Settings > Connectivity)</div>
               </div>
               <div class="form-group">
+                <label>Tally Timeout (ms)</label>
+                <input type="number" id="tally-timeout" placeholder="60000" />
+                <div class="hint">Timeout per Tally request in milliseconds (default: 60000 = 60s).</div>
+              </div>
+              <div class="form-group">
                 <label>Companies</label>
                 <input type="text" id="companies-list" placeholder='auto OR ["Company A", "Company B"]' required />
                 <div class="hint">Enter <strong>auto</strong> to discover all 5 open tabs, or comma-separated names.</div>
@@ -296,7 +301,7 @@
                 <label>
                   <input type="checkbox" id="tdl-enabled" onchange="toggleTdlFields()" style="width: auto;" /> Inject Custom TDL File (Fallback)
                 </label>
-                <div class="hint">Enable only if custom TDL columns are not already loaded in TallyPrime.</div>
+                <div class="hint" style="color: #b45309; font-weight: 500;">Load the .tdl inside TallyPrime (F1 &gt; Settings &gt; Product &amp; Features &gt; Manage Local TDL). Do not enable this for text-format TDL; it can make Tally show an error dialog and freeze the gateway.</div>
               </div>
               <div id="tdl-path-group" class="form-group" style="display: none;">
                 <label>TDL File Path (.tdl)</label>
@@ -560,6 +565,14 @@
             if (r.status === 'FAILED') bClass = 'badge-failed';
             else if (r.status === 'NO ENTRIES' || r.status === 'SKIPPED') bClass = 'badge-warn';
             
+            let errorMsg = r.error;
+            if (errorMsg) {
+              const tMs = data.tallyConfig?.timeoutMs || 60000;
+              if (/timed out|timeout/i.test(errorMsg) && !errorMsg.includes('ms')) {
+                errorMsg = errorMsg.replace(/timed out/i, `Timed out (${tMs}ms)`);
+              }
+            }
+
             return `
               <tr>
                 <td style="font-weight: 600;">${r.companyName}</td>
@@ -568,7 +581,7 @@
                 <td style="font-weight: 600;">${r.voucherCount}</td>
                 <td style="font-size: 11px; font-family: monospace; color: #1e3a8a;">${r.fileName || '--'}</td>
                 <td style="color: var(--text-muted);">${r.generatedAt}</td>
-                <td>${r.error ? '<span style="color: var(--danger);">' + r.error + '</span>' : (r.methodUsed || 'OK')}</td>
+                <td>${errorMsg ? '<span style="color: var(--danger);">' + errorMsg + '</span>' : (r.methodUsed || 'OK')}</td>
               </tr>
             `;
           }).join('');
@@ -585,6 +598,7 @@
         
         document.getElementById('tally-host').value = currentConfig.tally.host;
         document.getElementById('tally-port').value = currentConfig.tally.port;
+        document.getElementById('tally-timeout').value = currentConfig.tally.timeoutMs || 60000;
         document.getElementById('companies-list').value = currentConfig.companies === 'auto' ? 'auto' : currentConfig.companies.join(', ');
         
         document.getElementById('period-mode').value = currentConfig.dayBook.periodMode;
@@ -743,7 +757,7 @@
         tally: {
           host: document.getElementById('tally-host').value.trim(),
           port: parseInt(document.getElementById('tally-port').value, 10),
-          timeoutMs: currentConfig.tally?.timeoutMs || 60000,
+          timeoutMs: parseInt(document.getElementById('tally-timeout').value, 10) || 60000,
         },
         companies,
         exportFolder: document.getElementById('export-folder')?.value?.trim() || undefined,

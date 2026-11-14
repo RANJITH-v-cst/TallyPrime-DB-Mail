@@ -204,21 +204,82 @@ async function runProbe() {
   const todayStr = `${now.getFullYear()}${String(now.getMonth() + 1).padStart(2, '0')}${String(now.getDate()).padStart(2, '0')}`;
   const fromDate = config.dayBook.fromDate || todayStr;
   const toDate = config.dayBook.toDate || todayStr;
+  const cleanName = sanitizeFilename(targetCompany);
+  const debugDir = path.resolve(process.cwd(), 'debug');
+  if (!fs.existsSync(debugDir)) fs.mkdirSync(debugDir, { recursive: true });
 
-  console.log('[PROBE] Sending Day Book export request to Tally...');
-  const result = await nativeExporter.exportDayBook({
+  const exportOptions = {
     companyName: targetCompany,
     config: {
       ...config.dayBook,
-      exporter: 'native',
+      exporter: 'native' as const,
     },
     fromDate,
     toDate,
     reportId: 'Day Book',
-  });
+  };
 
-  const cleanName = sanitizeFilename(targetCompany);
-  const debugDir = path.resolve(process.cwd(), 'debug');
+  // -------------------------------------------------------------
+  // TASK B3: DIAGNOSTIC VARIANT TESTING
+  // -------------------------------------------------------------
+  console.log('============================================================');
+  console.log('🧪 TASK B3: TESTING TALLY EXPORT PATH VARIANTS (A, B, C)');
+  console.log('============================================================');
+
+  const variants: Array<{ id: 'none' | 'printFileName' | 'exportPathAndFile'; label: string; desc: string }> = [
+    {
+      id: 'none',
+      label: 'Variant (a)',
+      desc: 'No path variables (check if XLSX streams directly in HTTP response)',
+    },
+    {
+      id: 'printFileName',
+      label: 'Variant (b)',
+      desc: 'SVPrintFileName set to full file path ending in .xlsx',
+    },
+    {
+      id: 'exportPathAndFile',
+      label: 'Variant (c)',
+      desc: 'SVEXPORTPATH + SVFILENAME (current mechanism)',
+    },
+  ];
+
+  for (const v of variants) {
+    console.log(`\n------------------------------------------------------------`);
+    console.log(`▶ Testing ${v.label}: ${v.desc}`);
+    console.log(`------------------------------------------------------------`);
+
+    const testFileName = `${cleanName}_probe_${v.id}.xlsx`;
+    const res = await nativeExporter.testVariant(exportOptions, v.id, debugDir, testFileName);
+
+    console.log(`Request XML:\n${res.requestXml}`);
+    console.log(`HTTP Status          : ${res.httpStatus}`);
+    console.log(`Response Bytes       : ${res.responseBytes} bytes`);
+    console.log(`First Bytes (Hex)    : ${res.firstBytes || 'None'}`);
+    console.log(`PK Magic Header (Zip): ${res.isPk ? 'YES (Valid XLSX stream)' : 'NO'}`);
+    console.log(`File Appeared on Disk: ${res.fileAppeared ? 'YES' : 'NO'}`);
+    if (res.foundPath) {
+      console.log(`File Location        : ${res.foundPath}`);
+    }
+    if (res.textSample && !res.isPk) {
+      console.log(`Response Text Sample : ${res.textSample.slice(0, 200)}`);
+    }
+    if (res.error) {
+      console.log(`Error                : ${res.error}`);
+    }
+
+    // Save variant request & response to debug directory
+    fs.writeFileSync(path.join(debugDir, `${cleanName}_${v.id}_request.xml`), res.requestXml, 'utf8');
+  }
+
+  // -------------------------------------------------------------
+  // STANDARD EXPORT AND VERIFICATION
+  // -------------------------------------------------------------
+  console.log('\n============================================================');
+  console.log('[PROBE] Executing standard Day Book export...');
+  console.log('============================================================');
+
+  const result = await nativeExporter.exportDayBook(exportOptions);
   const requestFile = path.join(debugDir, `${cleanName}_request.xml`);
   const responseFile = path.join(debugDir, `${cleanName}_response.xlsx`);
 
