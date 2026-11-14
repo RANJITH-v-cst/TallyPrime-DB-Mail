@@ -6,6 +6,7 @@ import { TallyClient } from '../tally/client';
 import { CompanyDiscoveryService } from '../tally/companyDiscovery';
 import { NativeExcelExporter } from '../tally/exporters/nativeExporter';
 import { sanitizeFilename } from '../utils/sanitizer';
+import { getDebugDir } from '../utils/appPaths';
 
 interface VerificationResult {
   headerPass: boolean;
@@ -205,7 +206,7 @@ async function runProbe() {
   const fromDate = config.dayBook.fromDate || todayStr;
   const toDate = config.dayBook.toDate || todayStr;
   const cleanName = sanitizeFilename(targetCompany);
-  const debugDir = path.resolve(process.cwd(), 'debug');
+  const debugDir = getDebugDir();
   if (!fs.existsSync(debugDir)) fs.mkdirSync(debugDir, { recursive: true });
 
   const exportOptions = {

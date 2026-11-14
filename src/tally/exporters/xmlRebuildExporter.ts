@@ -7,6 +7,7 @@ import { logger } from '../../utils/logger';
 import { XMLParser } from 'fast-xml-parser';
 import ExcelJS from 'exceljs';
 import { escapeXml } from '../../utils/xmlHelper';
+import { getDebugDir } from '../../utils/appPaths';
 
 /**
  * Extracts plain string text from any parsed XML node value,
@@ -457,7 +458,7 @@ export class XmlRebuildExporter implements IExporter {
       vs.some((v) => this.isWithinRange(v.date, options.fromDate, options.toDate));
     const ctx = `"${options.companyName}" [date style: ${style}]`;
     const isDebugMode = process.env.DEBUG_TALLY_REQUEST === 'true';
-    const debugDir = path.resolve(process.cwd(), 'debug');
+    const debugDir = getDebugDir();
     const safeCompForFile = (options.companyName || 'Company')
       .replace(/^[`'"\s]+|[`'"\s]+$/g, '')
       .replace(/[^\w.-]/g, '_');
@@ -604,12 +605,12 @@ export class XmlRebuildExporter implements IExporter {
     headerRow.values = [
       'Date',
       'Particulars',
+      'Created By',
+      'Created Time',
       'Vch Type',
       'Vch No.',
       'Debit Amount',
       'Credit Amount',
-      'Created By',
-      'Created Time',
     ];
     headerRow.font = { bold: true, name: 'Calibri', size: 11 };
     headerRow.alignment = { vertical: 'middle' };
@@ -621,20 +622,20 @@ export class XmlRebuildExporter implements IExporter {
     };
     for (let c = 1; c <= 8; c++) {
       headerRow.getCell(c).border = thinBorder;
-      if (c === 5 || c === 6 || c === 8) {
+      if (c === 4 || c === 7 || c === 8) {
         headerRow.getCell(c).alignment = { horizontal: 'right', vertical: 'middle' };
       }
     }
 
-    // Set Column Widths
+    // Set Column Widths matching Day Book screen
     sheet.getColumn(1).width = 14; // Date
     sheet.getColumn(2).width = 40; // Particulars
-    sheet.getColumn(3).width = 16; // Vch Type
-    sheet.getColumn(4).width = 18; // Vch No.
-    sheet.getColumn(5).width = 18; // Debit Amount
-    sheet.getColumn(6).width = 18; // Credit Amount
-    sheet.getColumn(7).width = 16; // Created By
-    sheet.getColumn(8).width = 14; // Created Time
+    sheet.getColumn(3).width = 16; // Created By
+    sheet.getColumn(4).width = 14; // Created Time
+    sheet.getColumn(5).width = 16; // Vch Type
+    sheet.getColumn(6).width = 18; // Vch No.
+    sheet.getColumn(7).width = 18; // Debit Amount
+    sheet.getColumn(8).width = 18; // Credit Amount
 
     let currentRow = 6;
     let grandTotalDebit = 0;
@@ -685,34 +686,32 @@ export class XmlRebuildExporter implements IExporter {
           }
         }
 
-        // Add main voucher row
+        // Add main voucher row: Date | Particulars | Created By | Created Time | Vch Type | Vch No. | Debit Amount | Credit Amount
         const row = sheet.getRow(currentRow);
         row.getCell(1).value = displayDate;
         row.getCell(2).value = vch.partyLedgerName;
         if (isDetailed) {
           row.getCell(2).font = { bold: true };
         }
-        row.getCell(3).value = vch.voucherType;
-        row.getCell(4).value = vch.voucherNumber;
+        row.getCell(3).value = vch.createdBy || '';
+        row.getCell(3).alignment = { horizontal: 'left' };
+        row.getCell(4).value = vch.createdTime || '';
+        row.getCell(4).alignment = { horizontal: 'right' };
+        row.getCell(5).value = vch.voucherType;
+        row.getCell(6).value = vch.voucherNumber;
 
         if (vchDebit > 0) {
-          row.getCell(5).value = vchDebit;
-          row.getCell(5).numFmt = numFmt;
-          row.getCell(5).alignment = { horizontal: 'right' };
+          row.getCell(7).value = vchDebit;
+          row.getCell(7).numFmt = numFmt;
+          row.getCell(7).alignment = { horizontal: 'right' };
           grandTotalDebit += vchDebit;
         }
         if (vchCredit > 0) {
-          row.getCell(6).value = vchCredit;
-          row.getCell(6).numFmt = numFmt;
-          row.getCell(6).alignment = { horizontal: 'right' };
+          row.getCell(8).value = vchCredit;
+          row.getCell(8).numFmt = numFmt;
+          row.getCell(8).alignment = { horizontal: 'right' };
           grandTotalCredit += vchCredit;
         }
-
-        row.getCell(7).value = vch.createdBy || '';
-        row.getCell(7).alignment = { horizontal: 'left' };
-
-        row.getCell(8).value = vch.createdTime || '';
-        row.getCell(8).alignment = { horizontal: 'right' };
 
         currentRow++;
 
@@ -723,16 +722,16 @@ export class XmlRebuildExporter implements IExporter {
               const ledRow = sheet.getRow(currentRow);
               ledRow.getCell(2).value = `    ${led.ledgerName}`;
               ledRow.getCell(2).font = { italic: true, color: { argb: 'FF333333' } };
-              // Columns 7 and 8 (Created By, Created Time) remain blank on ledger sub-rows
+              // Columns 3-6 remain blank on ledger sub-rows
 
               if (led.isDeemedPositive) {
-                ledRow.getCell(5).value = led.amount;
-                ledRow.getCell(5).numFmt = numFmt;
-                ledRow.getCell(5).alignment = { horizontal: 'right' };
+                ledRow.getCell(7).value = led.amount;
+                ledRow.getCell(7).numFmt = numFmt;
+                ledRow.getCell(7).alignment = { horizontal: 'right' };
               } else {
-                ledRow.getCell(6).value = led.amount;
-                ledRow.getCell(6).numFmt = numFmt;
-                ledRow.getCell(6).alignment = { horizontal: 'right' };
+                ledRow.getCell(8).value = led.amount;
+                ledRow.getCell(8).numFmt = numFmt;
+                ledRow.getCell(8).alignment = { horizontal: 'right' };
               }
               currentRow++;
             }
@@ -748,20 +747,22 @@ export class XmlRebuildExporter implements IExporter {
       }
     }
 
-    // 3. Grand Total Row at bottom
+    // 3. Grand Total Row at bottom (Total in col 2, Debit in col 7, Credit in col 8)
     const totalRow = sheet.getRow(currentRow);
     totalRow.getCell(2).value = 'Total';
     totalRow.getCell(2).font = { bold: true };
-    totalRow.getCell(5).value = grandTotalDebit;
-    totalRow.getCell(5).numFmt = numFmt;
-    totalRow.getCell(5).font = { bold: true };
-    totalRow.getCell(5).alignment = { horizontal: 'right' };
-    totalRow.getCell(6).value = grandTotalCredit > 0 ? grandTotalCredit : 0;
-    totalRow.getCell(6).numFmt = numFmt;
-    totalRow.getCell(6).font = { bold: true };
-    totalRow.getCell(6).alignment = { horizontal: 'right' };
-    totalRow.getCell(7).value = '';
-    totalRow.getCell(8).value = '';
+    totalRow.getCell(3).value = '';
+    totalRow.getCell(4).value = '';
+    totalRow.getCell(5).value = '';
+    totalRow.getCell(6).value = '';
+    totalRow.getCell(7).value = grandTotalDebit;
+    totalRow.getCell(7).numFmt = numFmt;
+    totalRow.getCell(7).font = { bold: true };
+    totalRow.getCell(7).alignment = { horizontal: 'right' };
+    totalRow.getCell(8).value = grandTotalCredit > 0 ? grandTotalCredit : 0;
+    totalRow.getCell(8).numFmt = numFmt;
+    totalRow.getCell(8).font = { bold: true };
+    totalRow.getCell(8).alignment = { horizontal: 'right' };
     const totalBorder = {
       top: { style: 'thin' as const },
       bottom: { style: 'double' as const },

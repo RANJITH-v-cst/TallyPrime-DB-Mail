@@ -1,16 +1,20 @@
 import express, { Request, Response } from 'express';
 import * as path from 'path';
 import * as fs from 'fs';
+import { AddressInfo } from 'net';
 import { exec } from 'child_process';
 import { AppConfig } from '../config/types';
 import { loadConfig, saveConfig, validateConfig, mergeConfig } from '../config/config';
 import { parseEmailList, validateEmailList } from '../utils/emailValidator';
 import { resolveAndEnsureFolder } from '../utils/folderHelper';
+import { getLogsDir } from '../utils/appPaths';
 import { MailerService } from '../mailer/mailer';
 import { AppScheduler } from '../scheduler/scheduler';
 import { ExportOrchestrator, CycleOverrideOptions } from '../scheduler/orchestrator';
 import { StateManager } from '../scheduler/stateManager';
 import { logger } from '../utils/logger';
+
+const packageJson = require('../../package.json');
 
 export class WebUiServer {
   private app: express.Express;
@@ -31,18 +35,22 @@ export class WebUiServer {
     this.setupRoutes();
   }
 
+  public getPort(): number {
+    return this.port;
+  }
+
   private setupRoutes(): void {
     this.app.use(express.json());
     this.app.use(express.urlencoded({ extended: true }));
 
-    // Serve static files from public/ (works in both dev ts-node and compiled dist)
-    let publicDir = path.resolve(__dirname, 'public');
-    if (!fs.existsSync(publicDir)) {
-      const srcPublic = path.resolve(process.cwd(), 'src', 'ui', 'public');
-      if (fs.existsSync(srcPublic)) {
-        publicDir = srcPublic;
-      }
-    }
+    // Serve static files from public/ (works in dev ts-node, compiled dist, and packaged Electron)
+    const candidateDirs = [
+      path.resolve(__dirname, 'public'),
+      path.resolve(__dirname, '..', 'ui', 'public'),
+      path.resolve(process.cwd(), 'src', 'ui', 'public'),
+      path.resolve(process.cwd(), 'dist', 'ui', 'public'),
+    ];
+    const publicDir = candidateDirs.find((d) => fs.existsSync(path.join(d, 'index.html'))) || path.resolve(__dirname, 'public');
     this.app.use(express.static(publicDir));
 
     // API: Current Status
@@ -55,6 +63,7 @@ export class WebUiServer {
       res.json({
         isRunning,
         lastSummary,
+        version: packageJson.version || '1.0.0',
         nextRun: nextRun ? nextRun.toISOString() : null,
         companyStates: rawState.companies,
         lastCycleTimestamp: rawState.lastCycleTimestamp,
@@ -270,7 +279,7 @@ export class WebUiServer {
     // API: Read Recent Logs
     this.app.get('/api/logs', (req: Request, res: Response) => {
       try {
-        const logsDir = path.resolve(process.cwd(), 'logs');
+        const logsDir = getLogsDir();
         if (!fs.existsSync(logsDir)) {
           return res.json({ logs: [] });
         }
@@ -301,20 +310,30 @@ export class WebUiServer {
     });
   }
 
-  public start(): Promise<void> {
+  public start(customPort?: number): Promise<number> {
+    const desiredPort = customPort || this.port;
+
     return new Promise((resolve, reject) => {
-      try {
-        this.server = this.app.listen(this.port, this.host, () => {
+      const tryListen = (portToTry: number) => {
+        const srv = this.app.listen(portToTry, this.host, () => {
+          this.server = srv;
+          this.port = (srv.address() as AddressInfo).port;
           logger.info(`Web UI is running securely at http://${this.host}:${this.port}`);
-          resolve();
+          resolve(this.port);
         });
-        this.server.on('error', (err: any) => {
-          logger.error(`Failed to start Web UI server: ${err.message}`);
-          reject(err);
+
+        srv.on('error', (err: any) => {
+          if (err.code === 'EADDRINUSE' && portToTry !== 0) {
+            logger.warn(`Port ${portToTry} is in use on ${this.host}. Picking a free port...`);
+            tryListen(0); // Let OS assign an available free port
+          } else {
+            logger.error(`Failed to start Web UI server: ${err.message}`);
+            reject(err);
+          }
         });
-      } catch (err: any) {
-        reject(err);
-      }
+      };
+
+      tryListen(desiredPort);
     });
   }
 

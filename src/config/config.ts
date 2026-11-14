@@ -4,10 +4,8 @@ import { AppConfig } from './types';
 import { encryptPassword, decryptPassword } from '../utils/crypto';
 import { parseEmailList, validateEmailList } from '../utils/emailValidator';
 import { getDefaultExportFolder } from '../utils/folderHelper';
+import { getConfigFilePath, getSampleConfigPath, migrateDataIfNeeded } from '../utils/appPaths';
 import { logger } from '../utils/logger';
-
-const CONFIG_PATH = path.resolve(process.cwd(), 'config.json');
-const SAMPLE_CONFIG_PATH = path.resolve(process.cwd(), 'config.sample.json');
 
 export const DEFAULT_CONFIG: AppConfig = {
   tally: {
@@ -255,12 +253,15 @@ export function mergeConfig(existing: AppConfig, incoming: Partial<AppConfig>): 
  * Loads config.json, migrating or auto-encrypting plaintext password as necessary.
  */
 export function loadConfig(): AppConfig {
+  migrateDataIfNeeded();
+  const configPath = getConfigFilePath();
+  const samplePath = getSampleConfigPath();
   let loaded: any = {};
 
-  if (!fs.existsSync(CONFIG_PATH)) {
-    if (fs.existsSync(SAMPLE_CONFIG_PATH)) {
+  if (!fs.existsSync(configPath)) {
+    if (fs.existsSync(samplePath)) {
       try {
-        const sampleRaw = fs.readFileSync(SAMPLE_CONFIG_PATH, 'utf8');
+        const sampleRaw = fs.readFileSync(samplePath, 'utf8');
         loaded = JSON.parse(sampleRaw);
       } catch {
         loaded = { ...DEFAULT_CONFIG };
@@ -269,12 +270,12 @@ export function loadConfig(): AppConfig {
       loaded = { ...DEFAULT_CONFIG };
     }
     saveConfig(loaded);
-    logger.info(`Created default configuration at ${CONFIG_PATH}`);
+    logger.info(`Created default configuration at ${configPath}`);
     return loaded as AppConfig;
   }
 
   try {
-    const raw = fs.readFileSync(CONFIG_PATH, 'utf8');
+    const raw = fs.readFileSync(configPath, 'utf8');
     loaded = JSON.parse(raw);
   } catch (err: any) {
     logger.error(`Error reading config.json: ${err.message}. Falling back to defaults.`);
@@ -303,20 +304,21 @@ export function loadConfig(): AppConfig {
  * Saves config to disk atomically via write-to-temp-then-rename.
  */
 export function saveConfig(config: AppConfig): void {
+  const configPath = getConfigFilePath();
   // Ensure password is encrypted before writing
   const toSave = JSON.parse(JSON.stringify(config)) as AppConfig;
   if (toSave.smtp.password && !toSave.smtp.password.startsWith('enc:')) {
     toSave.smtp.password = encryptPassword(toSave.smtp.password);
   }
 
-  const dir = path.dirname(CONFIG_PATH);
+  const dir = path.dirname(configPath);
   if (!fs.existsSync(dir)) {
     fs.mkdirSync(dir, { recursive: true });
   }
 
-  const tmpPath = `${CONFIG_PATH}.${Date.now()}.tmp`;
+  const tmpPath = `${configPath}.${Date.now()}.tmp`;
   fs.writeFileSync(tmpPath, JSON.stringify(toSave, null, 2), 'utf8');
-  fs.renameSync(tmpPath, CONFIG_PATH);
+  fs.renameSync(tmpPath, configPath);
 }
 
 /**

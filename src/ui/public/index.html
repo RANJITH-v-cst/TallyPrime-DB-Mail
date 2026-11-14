@@ -116,11 +116,13 @@
     <div id="tab-status" class="tab-content active">
       <!-- QUICK EXPORT DISPATCH PANEL -->
       <div class="card" style="margin-bottom: 24px; background: linear-gradient(135deg, #eff6ff 0%, #f0fdf4 100%); border: 1px solid #bfdbfe; box-shadow: 0 2px 4px rgba(0,0,0,0.04);">
-        <div style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 14px;">
+        <div style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 14px; flex-wrap: wrap; gap: 8px;">
           <div>
             <div style="font-size: 15px; font-weight: 700; color: #1e3a8a;">⚡ Quick Export & Instant Email Dispatch</div>
-            <div style="font-size: 12px; color: #475569; margin-top: 2px;">
-              Sender Account: <strong>ranjithsvhpc1234@gmail.com</strong>
+            <div style="font-size: 12px; color: #475569; margin-top: 3px; display: flex; align-items: center; gap: 8px; flex-wrap: wrap;">
+              <span>Sender Account:</span>
+              <strong id="dashboard-sender-email" style="color: #1e293b; background: #e2e8f0; padding: 2px 8px; border-radius: 4px; font-family: monospace;">Loading...</strong>
+              <button type="button" onclick="focusSenderSettings()" style="background: none; border: 1px solid #94a3b8; border-radius: 4px; padding: 2px 8px; font-size: 11px; color: #2563eb; cursor: pointer; font-weight: 600;">⚙️ Set Sender Mail / App Password</button>
             </div>
           </div>
           <span class="badge badge-ok" style="font-size: 12px; padding: 4px 10px;">Ready</span>
@@ -323,33 +325,62 @@
           </div>
 
           <div>
-            <div class="form-section">
-              <h3>SMTP Configuration</h3>
-              <div class="form-group">
-                <label>SMTP Host</label>
-                <input type="text" id="smtp-host" required />
+            <div class="form-section" id="smtp-settings-card" style="border: 2px solid #bfdbfe; background: #f8fafc; border-radius: 8px; padding: 18px;">
+              <div style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 12px; flex-wrap: wrap; gap: 8px;">
+                <h3 style="margin: 0; color: #1e3a8a; font-size: 16px;">📧 Sender Account & App Password</h3>
+                <button type="button" class="btn-secondary" style="font-size: 11px; padding: 4px 8px; font-weight: 600;" onclick="applyGmailPreset()">⚡ Auto-fill Gmail Settings</button>
               </div>
-              <div class="form-group">
-                <label>SMTP Port</label>
-                <input type="number" id="smtp-port" required />
+
+              <div class="form-group" style="margin-bottom: 12px;">
+                <label style="font-weight: 700; color: #1e293b;">Sender Mail ID (Google / SMTP User) *</label>
+                <input type="email" id="smtp-user" placeholder="e.g. yourbusiness@gmail.com" required style="font-weight: 600;" oninput="onSenderEmailChange()" />
+                <div class="hint">The Google or SMTP email address used to authenticate and dispatch emails.</div>
               </div>
-              <div class="form-group">
-                <label>
-                  <input type="checkbox" id="smtp-secure" style="width: auto;" /> Secure SSL (Port 465)
-                </label>
+
+              <div class="form-group" style="margin-bottom: 12px;">
+                <label style="font-weight: 700; color: #1e293b;">Google App Password / SMTP Password *</label>
+                <div style="display: flex; gap: 6px;">
+                  <input type="password" id="smtp-password" placeholder="Enter 16-character Google App Password (leave blank to keep existing)" style="flex: 1;" />
+                  <button type="button" id="btn-toggle-smtp-pass" onclick="toggleSmtpPasswordVisibility()" style="padding: 6px 12px; border: 1px solid #cbd5e1; border-radius: 6px; background: white; cursor: pointer; font-size: 12px; font-weight: 600; white-space: nowrap;">👁️ Show</button>
+                </div>
+                <div style="margin-top: 6px; padding: 10px 12px; background: #eff6ff; border: 1px solid #dbeafe; border-radius: 6px; font-size: 11px; color: #1e40af; line-height: 1.5;">
+                  💡 <strong>How to get a Gmail App Password:</strong><br/>
+                  1. Open your <a href="https://myaccount.google.com/security" target="_blank" style="color: #2563eb; font-weight: 600; text-decoration: underline;">Google Account Security</a> and verify <strong>2-Step Verification</strong> is ON.<br/>
+                  2. Go to <a href="https://myaccount.google.com/apppasswords" target="_blank" style="color: #2563eb; font-weight: 600; text-decoration: underline;">Google App Passwords</a>.<br/>
+                  3. Enter app name (e.g. <em>TallyMailer</em>) and click <strong>Create</strong>.<br/>
+                  4. Copy the generated 16-character code (e.g. <code>abcd efgh ijkl mnop</code>) and paste it above.<br/>
+                  🔒 Password is encrypted with AES-256 machine key. Spaces are automatically removed.
+                </div>
               </div>
-              <div class="form-group">
-                <label>SMTP User / Email</label>
-                <input type="text" id="smtp-user" required />
+
+              <div class="form-group" style="margin-bottom: 12px;">
+                <label style="font-weight: 600;">From Display Address (Name & Email)</label>
+                <input type="text" id="smtp-from" placeholder="Tally DayBook Mailer <youraccount@gmail.com>" />
+                <div class="hint">The display name recipients will see in their inbox. Defaults to sender email if blank.</div>
               </div>
-              <div class="form-group">
-                <label>SMTP Password / App Password</label>
-                <input type="password" id="smtp-password" placeholder="Leave unchanged to keep existing" />
-                <div class="hint">Stored encrypted at rest with AES-256 machine key.</div>
-              </div>
-              <div class="form-group">
-                <label>From Display Address</label>
-                <input type="text" id="smtp-from" placeholder="Tally DayBook Mailer <noreply@example.com>" />
+
+              <details style="margin-top: 10px; border-top: 1px solid #e2e8f0; padding-top: 10px;">
+                <summary style="font-size: 12px; font-weight: 600; color: #475569; cursor: pointer; margin-bottom: 8px;">⚙️ Advanced SMTP Server Settings (Host, Port, SSL)</summary>
+                <div style="display: grid; grid-template-columns: 2fr 1fr; gap: 10px; margin-top: 8px;">
+                  <div class="form-group">
+                    <label>SMTP Host</label>
+                    <input type="text" id="smtp-host" value="smtp.gmail.com" required />
+                  </div>
+                  <div class="form-group">
+                    <label>SMTP Port</label>
+                    <input type="number" id="smtp-port" value="465" required />
+                  </div>
+                </div>
+                <div class="form-group" style="margin-top: 6px;">
+                  <label>
+                    <input type="checkbox" id="smtp-secure" style="width: auto;" checked /> Secure SSL (Port 465)
+                  </label>
+                </div>
+              </details>
+
+              <div style="margin-top: 14px; display: flex; gap: 10px; align-items: center; flex-wrap: wrap;">
+                <button type="button" class="btn-secondary" onclick="testSmtpConnection()" style="font-weight: 600;">🧪 Test SMTP & App Password</button>
+                <span id="smtp-test-status" style="font-size: 12px;"></span>
               </div>
             </div>
 
@@ -428,6 +459,11 @@
       </div>
       <div class="logs-box" id="logs-container">Loading logs...</div>
     </div>
+
+    <footer style="margin-top: 32px; padding-top: 16px; border-top: 1px solid var(--border); display: flex; justify-content: space-between; align-items: center; font-size: 12px; color: var(--text-muted);">
+      <div>Tally DayBook Mailer &bull; Automated Dispatch Middleware</div>
+      <div id="app-version-footer">Version 1.0.0</div>
+    </footer>
   </div>
 
   <script>
@@ -557,6 +593,10 @@
         }
         document.getElementById('last-cycle-time').innerText = data.lastCycleTimestamp ? new Date(data.lastCycleTimestamp).toLocaleTimeString() : 'Never';
         document.getElementById('next-run-time').innerText = data.nextRun ? new Date(data.nextRun).toLocaleTimeString() : '--';
+        if (data.version) {
+          const vElem = document.getElementById('app-version-footer');
+          if (vElem) vElem.innerText = `Version ${data.version}`;
+        }
 
         const tbody = document.getElementById('company-status-rows');
         if (data.lastSummary && data.lastSummary.results && data.lastSummary.results.length > 0) {
@@ -621,6 +661,12 @@
         document.getElementById('smtp-user').value = currentConfig.smtp.user;
         document.getElementById('smtp-password').value = currentConfig.smtp.password || '';
         document.getElementById('smtp-from').value = currentConfig.smtp.from || '';
+
+        // Update dashboard sender email
+        const dashSender = document.getElementById('dashboard-sender-email');
+        if (dashSender) {
+          dashSender.innerText = currentConfig.smtp.user || currentConfig.smtp.from || 'Not Configured';
+        }
 
         // Recipients
         const toVal = (currentConfig.mail.recipients.to || []).join(', ');
@@ -1009,6 +1055,70 @@
         }
       } catch (err) {
         showAlert('SMTP test failed: ' + err.message, false);
+      }
+    }
+
+    function toggleSmtpPasswordVisibility() {
+      const passInput = document.getElementById('smtp-password');
+      const btn = document.getElementById('btn-toggle-smtp-pass');
+      if (!passInput || !btn) return;
+      if (passInput.type === 'password') {
+        passInput.type = 'text';
+        btn.innerText = '🙈 Hide';
+      } else {
+        passInput.type = 'password';
+        btn.innerText = '👁️ Show';
+      }
+    }
+
+    function applyGmailPreset() {
+      document.getElementById('smtp-host').value = 'smtp.gmail.com';
+      document.getElementById('smtp-port').value = 465;
+      document.getElementById('smtp-secure').checked = true;
+      const user = document.getElementById('smtp-user').value.trim();
+      const fromEl = document.getElementById('smtp-from');
+      if (user && (!fromEl.value || fromEl.value.includes('<') && fromEl.value.includes('>'))) {
+        fromEl.value = `Tally DayBook Mailer <${user}>`;
+      }
+      showAlert('Gmail presets applied (smtp.gmail.com:465 SSL)', true);
+    }
+
+    function onSenderEmailChange() {
+      const user = document.getElementById('smtp-user').value.trim();
+      const fromEl = document.getElementById('smtp-from');
+      if (user && !fromEl.value) {
+        fromEl.value = `Tally DayBook Mailer <${user}>`;
+      }
+    }
+
+    function focusSenderSettings() {
+      switchTab('settings');
+      setTimeout(() => {
+        const card = document.getElementById('smtp-settings-card');
+        if (card) {
+          card.scrollIntoView({ behavior: 'smooth', block: 'center' });
+          const userField = document.getElementById('smtp-user');
+          if (userField && !userField.value) {
+            userField.focus();
+          } else {
+            const passField = document.getElementById('smtp-password');
+            if (passField) passField.focus();
+          }
+        }
+      }, 150);
+    }
+
+    async function testSmtpConnection() {
+      const statusEl = document.getElementById('smtp-test-status');
+      if (statusEl) {
+        statusEl.innerHTML = '<span style="color: #2563eb; font-weight: 600;">⏳ Testing SMTP connection...</span>';
+      }
+      try {
+        await testMail();
+      } finally {
+        if (statusEl) {
+          statusEl.innerText = '';
+        }
       }
     }
 

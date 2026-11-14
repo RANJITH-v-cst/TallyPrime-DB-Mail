@@ -1,17 +1,20 @@
 {
   "name": "tally-daybook-mailer",
   "version": "1.0.0",
-  "description": "Windows middleware application that automatically exports TallyPrime Day Books for multiple companies and emails them on schedule",
-  "main": "dist/index.js",
+  "description": "Windows desktop application that automatically exports TallyPrime Day Books for multiple companies and emails them on schedule",
+  "main": "dist-electron/main.js",
   "scripts": {
-    "build": "tsc && node -e \"fs.cpSync('src/ui/public', 'dist/ui/public', {recursive: true, force: true})\"",
-    "start": "tsc && node dist/index.js",
+    "build:node": "tsc && node -e \"fs.cpSync('src/ui/public', 'dist/ui/public', {recursive: true, force: true})\"",
+    "build:electron": "tsc -p tsconfig.electron.json",
+    "build": "npm run build:node && npm run build:electron",
+    "start": "electron .",
+    "start:node": "node dist/index.js",
     "dev": "ts-node src/index.ts",
+    "electron:dev": "npm run build && electron .",
+    "electron:build": "npm run build && electron-builder --win",
     "test": "jest",
     "mock-tally": "ts-node src/mock/mockTallyServer.ts",
-    "tally:probe": "ts-node src/cli/probe.ts",
-    "service:install": "node service/install-service.js",
-    "service:uninstall": "node service/uninstall-service.js"
+    "tally:probe": "ts-node src/cli/probe.ts"
   },
   "keywords": [
     "tally",
@@ -19,10 +22,11 @@
     "daybook",
     "excel",
     "mailer",
-    "windows-service",
+    "desktop-app",
+    "electron",
     "tdl"
   ],
-  "author": "",
+  "author": "Advent Systems",
   "license": "MIT",
   "dependencies": {
     "archiver": "^7.0.1",
@@ -31,7 +35,6 @@
     "express": "^4.21.2",
     "fast-xml-parser": "^4.5.1",
     "node-cron": "^3.0.3",
-    "node-windows": "^0.1.14",
     "nodemailer": "^6.10.0",
     "winston": "^3.17.0",
     "winston-daily-rotate-file": "^5.0.0"
@@ -43,9 +46,36 @@
     "@types/node": "^22.10.7",
     "@types/node-cron": "^3.0.11",
     "@types/nodemailer": "^6.4.17",
+    "electron": "^45.3.2",
+    "electron-builder": "^26.18.0",
     "jest": "^29.7.0",
     "ts-jest": "^29.2.5",
     "ts-node": "^10.9.2",
     "typescript": "^5.7.3"
+  },
+  "build": {
+    "appId": "com.advent.tallydaybookmailer",
+    "productName": "Tally DayBook Mailer",
+    "directories": {
+      "output": "release"
+    },
+    "files": [
+      "dist/**/*",
+      "dist-electron/**/*",
+      "config.sample.json",
+      "build/icon.ico"
+    ],
+    "win": {
+      "target": "nsis",
+      "icon": "build/icon.ico"
+    },
+    "nsis": {
+      "oneClick": false,
+      "perMachine": false,
+      "allowToChangeInstallationDirectory": true,
+      "createDesktopShortcut": true,
+      "createStartMenuShortcut": true,
+      "shortcutName": "Tally DayBook Mailer"
+    }
   }
 }

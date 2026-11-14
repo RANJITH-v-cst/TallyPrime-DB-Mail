@@ -169,27 +169,28 @@ describe('Task 5: Created By / Created Time Comprehensive Tests', () => {
     const row5 = sheet.getRow(5);
     expect(row5.getCell(1).value).toBe('Date');
     expect(row5.getCell(2).value).toBe('Particulars');
-    expect(row5.getCell(3).value).toBe('Vch Type');
-    expect(row5.getCell(4).value).toBe('Vch No.');
-    expect(row5.getCell(5).value).toBe('Debit Amount');
-    expect(row5.getCell(6).value).toBe('Credit Amount');
-    expect(row5.getCell(7).value).toBe('Created By');
-    expect(row5.getCell(8).value).toBe('Created Time');
+    expect(row5.getCell(3).value).toBe('Created By');
+    expect(row5.getCell(4).value).toBe('Created Time');
+    expect(row5.getCell(5).value).toBe('Vch Type');
+    expect(row5.getCell(6).value).toBe('Vch No.');
+    expect(row5.getCell(7).value).toBe('Debit Amount');
+    expect(row5.getCell(8).value).toBe('Credit Amount');
 
     // Row 6: First voucher
     const row6 = sheet.getRow(6);
     expect(row6.getCell(2).value).toBe('Alpha Supplies');
-    expect(row6.getCell(3).value).toBe('Payment');
-    expect(row6.getCell(4).value).toBe('PAY-1');
-    expect(row6.getCell(5).value).toBe(10000); // Debit in column E
-    expect(row6.getCell(7).value).toBe('admin'); // Created By in column G
-    expect(row6.getCell(8).value).toBe('10:05 AM'); // Created Time in column H
+    expect(row6.getCell(3).value).toBe('admin'); // Created By in column C
+    expect(row6.getCell(4).value).toBe('10:05 AM'); // Created Time in column D
+    expect(row6.getCell(5).value).toBe('Payment'); // Vch Type in column E
+    expect(row6.getCell(6).value).toBe('PAY-1'); // Vch No. in column F
+    expect(row6.getCell(7).value).toBe(10000); // Debit in column G
 
     // Row 7: Grand Total Row
     const row7 = sheet.getRow(7);
     expect(row7.getCell(2).value).toBe('Total');
-    expect(row7.getCell(5).value).toBe(10000); // Grand total debit stays in column E
-    expect(row7.getCell(7).value).toBeFalsy(); // Column G empty
+    expect(row7.getCell(3).value).toBeFalsy(); // Column C empty
+    expect(row7.getCell(4).value).toBeFalsy(); // Column D empty
+    expect(row7.getCell(7).value).toBe(10000); // Grand total debit in column G
     expect(row7.getCell(8).value).toBeFalsy(); // Column H empty
   });
 

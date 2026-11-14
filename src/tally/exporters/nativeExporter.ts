@@ -5,6 +5,7 @@ import { TallyClient } from '../client';
 import { logger } from '../../utils/logger';
 import { escapeXml } from '../../utils/xmlHelper';
 import { sanitizeFilename } from '../../utils/sanitizer';
+import { getDebugDir, getExportsDir } from '../../utils/appPaths';
 
 /**
  * Formats YYYYMMDD string (e.g. "20261101") to DD-MMM-YYYY (e.g. "1-Nov-2026")
@@ -260,13 +261,13 @@ export class NativeExcelExporter implements IExporter {
 
   public async exportDayBook(options: ExportOptions): Promise<ExporterResult> {
     const isDebugMode = process.env.DEBUG_TALLY_REQUEST === 'true';
-    const debugDir = path.resolve(process.cwd(), 'debug');
+    const debugDir = getDebugDir();
     const safeCompForFile = sanitizeCompanyForFilename(options.companyName);
 
     // STEP 2: Make the export path robust
     const targetFolder = options.exportFolder
       ? path.resolve(options.exportFolder)
-      : path.resolve(process.cwd(), 'exports');
+      : getExportsDir();
 
     if (!fs.existsSync(targetFolder)) {
       try {

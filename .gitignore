@@ -5,6 +5,8 @@ state.json
 
 # Build output
 dist/
+dist-electron/
+release/
 debug/
 installer/stage/
 installer/output/

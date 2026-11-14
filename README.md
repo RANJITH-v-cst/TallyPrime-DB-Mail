@@ -1,234 +1,96 @@
-# TallyDayBookMailer
+# TallyDayBookMailer (Windows Desktop Application)
 
-**TallyDayBookMailer** is a production-grade Windows middleware application designed for TallyPrime multi-company environments. It automatically connects to TallyPrime's HTTP server, monitors multiple simultaneously open company tabs (e.g. 5 open tabs), exports their Day Books in Excel format every 30 minutes, and emails them to configured recipients with automatic retry, concurrency locking, and fallbacks.
+**TallyDayBookMailer** is an automated Windows desktop application for TallyPrime multi-company environments. It connects directly to TallyPrime's HTTP gateway (port 9000), monitors all open company tabs, automatically exports Day Books in Excel format, and emails them on schedule or on demand.
 
 ---
 
 ## 🌟 Key Features
 
-- **Multi-Company Concurrency**: Discovers all open company tabs dynamically (`"companies": "auto"`) or validates a configured list. Exports each company sequentially using `SVCURRENTCOMPANY` without relying on which tab is active.
+- **Windows Desktop Application**: Runs natively with a System Tray icon and clean desktop interface. Minimizing or closing the window keeps the application quietly running in your Windows system tray.
+- **Single Instance & Auto-Start**: Supports "Start with Windows" via the tray menu. If launched with `--hidden`, it stays quietly minimized in the tray.
+- **Dynamic Sender Email & App Password Configuration**: Easily configure your Google/SMTP sender email and 16-character App Password directly in the UI. Features one-click **"Auto-fill Gmail"**, password visibility toggling (`👁️ Show`), and an in-place **"Test SMTP & App Password"** tool.
+- **Created By & Created Time Column Sequence**: Day Book exports precisely match the TallyPrime Day Book screen layout:
+  `Date | Particulars | Created By | Created Time | Vch Type | Vch No. | Debit Amount | Credit Amount`
+- **Dynamic Port Selection**: Default Web UI runs on `127.0.0.1:9095`. If the port is occupied, the application automatically finds an available free local port and shows the active port in the tray tooltip.
+- **Robust Multi-Company Discovery**: Detects all open company tabs (`"companies": "auto"`) and processes each company sequentially without freezing Tally.
 - **Dual Exporter with Intelligent Fallback**:
-  1. **NativeExcelExporter**: Fetches Tally's official Excel export (`$$SysName:Excel`, `XLSX`, `Spreadsheet`) and verifies the binary PK zip magic header.
-  2. **XmlRebuildExporter**: If Tally returns non-PK bytes or an error, it queries the Day Book Voucher Collection via TDL XML and rebuilds an identical `.xlsx` file using `exceljs`, featuring Indian numbering format (`#,##,##0.00`), formatted dates (`dd-MMM-yy`), voucher-wise indented ledger lines in detailed mode, and matching grand totals.
-- **Since-Last-Run Incremental Mode**: Tracks the maximum `ALTERID` per company in an atomic `state.json` file. Only emails new or modified vouchers in subsequent runs, with midnight rollover detection.
-- **Non-Overlapping Scheduler**: Uses strict concurrency locking and safe timers. Never runs concurrent cycles even if an export takes longer than the interval. Includes configurable active time windows (e.g., `09:00 - 20:00`).
-- **Resilient Emailing**: Nodemailer with 3x exponential backoff retries. Supports `separate` `.xlsx` attachments or a single compressed `.zip` archive. Throttles "Tally Down" alerts to at most once per hour.
-- **Local Control Center (Web UI)**: Clean Express dashboard bound strictly to `127.0.0.1:9095`. Allows live status monitoring, configuration editing, log streaming, "Send Now", and "Test Mail".
-- **Windows Service Ready**: Includes `node-windows` scripts for auto-start at Windows boot and automatic restart on unexpected failures.
-- **Security & Privacy**: SMTP passwords are encrypted at rest with AES-256-GCM using machine-derived keys. Passwords are automatically masked in logs and web interfaces.
+  1. **NativeExcelExporter**: Retrieves Tally's native Day Book Excel export directly. Verifies that `Created By` and `Created Time` columns are present.
+  2. **XmlRebuildExporter**: Rebuilds the exact Day Book workbook from Tally's Voucher Collection if Tally native export times out or lacks the UDF columns.
+- **AES-256 Encryption at Rest**: Passwords and secrets are encrypted with machine-derived AES-256 keys.
 
 ---
 
-## 📁 Project Structure
+## 📦 Installation & Setup
 
-```text
-TallyDayBookMailer/
-├── dist/                          # Compiled JavaScript production build
-├── logs/                          # Daily rotating logs (30-day retention)
-├── exports/                       # Saved local Excel copies (configurable retention)
-├── service/
-│   ├── install-service.js         # Windows Service installer script
-│   └── uninstall-service.js       # Windows Service uninstaller script
-├── src/
-│   ├── index.ts                   # Main application entry point & lifecycle
-│   ├── config/
-│   │   ├── config.ts              # Configuration loader, validator, crypto at rest
-│   │   └── types.ts               # Strict TypeScript interfaces
-│   ├── tally/
-│   │   ├── client.ts              # Axios client with 60s per-company timeout
-│   │   ├── companyDiscovery.ts    # XML parser for List of Companies
-│   │   ├── exporterFactory.ts     # Exporter fallback coordinator
-│   │   └── exporters/
-│   │       ├── types.ts           # Exporter interface
-│   │       ├── nativeExporter.ts  # Tally native Excel export & PK validator
-│   │       └── xmlRebuildExporter.ts # TDL XML fetch & ExcelJS rebuild
-│   ├── scheduler/
-│   │   ├── scheduler.ts           # Overlap prevention, interval runner, active window
-│   │   ├── orchestrator.ts        # Sequential company export coordinator
-│   │   └── stateManager.ts        # Atomic state.json persistence & ALTERID tracker
-│   ├── mailer/
-│   │   ├── mailer.ts              # Nodemailer dispatcher with 3x retry
-│   │   └── templates.ts           # Dynamic subject & HTML summary table
-│   ├── ui/
-│   │   ├── server.ts              # Localhost Express server (127.0.0.1:9095)
-│   │   └── public/
-│   │       └── index.html         # Responsive web management dashboard
-│   ├── utils/
-│   │   ├── crypto.ts              # AES-256-GCM password encryption at rest
-│   │   ├── logger.ts              # Winston daily rotating file logger
-│   │   ├── sanitizer.ts           # Windows filename sanitizer
-│   │   └── zip.ts                 # Archiver compression utility
-│   └── mock/
-│       └── mockTallyServer.ts     # Mock TallyPrime HTTP server for testing
-├── test/
-│   ├── sanitizer.test.ts          # Unit tests for filename sanitizer
-│   ├── schedulerLock.test.ts      # Unit tests for overlap lock & active window
-│   ├── stateManager.test.ts       # Unit tests for since-last-run & alert throttler
-│   ├── mailBuilder.test.ts        # Unit tests for email templates
-│   └── e2eMockTest.ts             # Complete End-to-End mock server test
-├── config.json                    # Active configuration file
-├── config.sample.json             # Annotated sample configuration
-├── package.json
-├── tsconfig.json
-└── README.md
-```
+### 1. Download & Install
+1. Run the installer: `release\Tally DayBook Mailer Setup 1.0.0.exe` (or build with `npm run electron:build`).
+2. The installer installs per-user (no Administrator rights required) and creates Desktop and Start Menu shortcuts.
+3. The app opens at `http://127.0.0.1:9095`.
+
+### 2. Runtime Data Location
+All persistent files are stored in the user data directory:
+`%APPDATA%\tally-daybook-mailer` (e.g. `C:\Users\<User>\AppData\Roaming\tally-daybook-mailer`)
+- `config.json` — Application configuration
+- `.key` — Encryption secret
+- `state.json` — Last cycle status and ALTERID trackers
+- `logs/` — Winston rotating daily application logs
+- `debug/` — Raw Tally request/response dumps when `DEBUG_TALLY_REQUEST=true`
 
 ---
 
-## ⚙️ Enabling TallyPrime's HTTP Server
+## 📧 How to Set Sender Mail ID & App Password in the UI
 
-TallyPrime must have its internal HTTP/ODBC server enabled on port 9000:
+1. Launch **Tally DayBook Mailer**.
+2. Go to the **Settings** tab (or click **"⚙️ Set Sender Mail / App Password"** on the Dashboard).
+3. Under **Sender Account & App Password**:
+   - **Sender Mail ID**: Enter your email (e.g. `yourbusiness@gmail.com`).
+   - Click **"⚡ Auto-fill Gmail Settings"** to set the host (`smtp.gmail.com`) and port (`465 SSL`).
+   - **App Password**: Enter your 16-character Google App Password. Click **"👁️ Show"** to verify what you typed.
+   - Click **"🧪 Test SMTP & App Password"** to immediately verify your email credentials.
+4. Click **"Save Settings"** at the bottom of the page.
 
-1. Open **TallyPrime**.
-2. Press **F1** (Help) from the top menu, then select **Settings** > **Connectivity**.
-3. Under **Client/Server configuration**:
-   - Set **TallyPrime act as**: `Both` (or `Server`).
-   - Set **Enable ODBC**: `Yes`.
-   - Set **Port**: `9000` (default).
-4. Save the screen and restart TallyPrime when prompted.
-5. Open your 5 company tabs in TallyPrime.
-6. Verify in your browser: navigate to `http://127.0.0.1:9000`. You should see an XML response or Tally server header.
-
----
-
-## 📧 Email / SMTP Setup Guide
-
-### 1. Gmail Setup (Recommended: App Passwords)
-Google requires an **App Password** instead of your standard Gmail password:
-1. Log in to your Google Account and visit [Google Account Security](https://myaccount.google.com/security).
-2. Ensure **2-Step Verification** is turned ON.
-3. In the search box at the top, type **App Passwords**.
-4. Create a new app name (e.g. `TallyDayBookMailer`).
-5. Copy the generated 16-character password (e.g. `abcd efgh ijkl mnop`).
-6. In `config.json` (or the Web UI):
-   - `smtp.host`: `smtp.gmail.com`
-   - `smtp.port`: `587`
-   - `smtp.secure`: `false`
-   - `smtp.user`: `your-email@gmail.com`
-   - `smtp.password`: `abcdefghijklmnop` (spaces removed)
-
-### 2. Microsoft Office 365 Setup
-1. `smtp.host`: `smtp.office365.com`
-2. `smtp.port`: `587`
-3. `smtp.secure`: `false`
-4. `smtp.user`: `your-email@yourdomain.com`
-5. `smtp.password`: Your Microsoft App Password.
-6. Ensure SMTP AUTH is enabled for the mailbox in the Microsoft 365 Admin Center.
+### Generating a Gmail App Password
+1. Visit [Google Account Security](https://myaccount.google.com/security) and ensure **2-Step Verification** is **ON**.
+2. Navigate to [Google App Passwords](https://myaccount.google.com/apppasswords).
+3. Enter an app name like **TallyMailer** and click **Create**.
+4. Copy the 16-letter password (e.g., `abcd efgh ijkl mnop`) and paste it into the UI. Spaces are automatically handled.
 
 ---
 
-## 🚀 Quick Start & Installation
+## 🖥️ System Tray Features
 
-### Prerequisites
-- Node.js (v18.x, v20.x, or v22.x LTS)
-- Windows 10/11 or Windows Server 2016/2019/2022
+When you close the main application window, the application **does not exit**; it minimizes to the system notification area (tray).
 
-### 1. Install Dependencies & Build
-```powershell
+- **Double-Click Tray Icon**: Shows or hides the application window.
+- **Right-Click Tray Menu**:
+  - **Open Tally DayBook Mailer**: Opens and focuses the dashboard window.
+  - **▶ Send Now**: Immediately triggers a Day Book export cycle for all open companies.
+  - **Start with Windows**: Toggle automatic startup on Windows login.
+  - **Open Exports Folder**: Opens the exported Excel files folder.
+  - **Open Logs Folder**: Opens the folder containing daily logs.
+  - **Quit**: Gracefully shuts down background services and exits the app.
+
+---
+
+## 🛠️ Development & Building
+
+```bash
+# Install dependencies
 npm install
-npm run build
-```
 
-### 2. Run the Mock Server Integration Test
-To verify the entire pipeline (company discovery, native Excel, fallback XML rebuild, ALTERID deltas, and email formatting) without live Tally:
-```powershell
-npx ts-node test/e2eMockTest.ts
-```
-
-### 3. Run Unit Tests
-```powershell
+# Run unit tests (plain Node.js)
 npm test
-```
 
-### 4. Start the Application
-```powershell
-npm start
+# Run app in dev mode (Electron)
+npm run electron:dev
+
+# Build distributable Windows NSIS installer
+npm run electron:build
 ```
-The application will:
-- Open the local Web UI at **http://127.0.0.1:9095**.
-- Run an initial Day Book export cycle immediately.
-- Schedule subsequent cycles every 30 minutes.
 
 ---
 
-## 📦 Installer & Standalone Deployment (Recommended for Clients)
+## 📜 Differences from Legacy Service
 
-For end-user client PCs that have **zero development tools** (no Node.js, no npm, no Git), you can generate a single self-contained Windows setup file: `TallyDayBookMailer-Setup.exe`.
-
-### 1. Building the Installer
-On your development machine (with Node.js and Inno Setup 6 installed):
-```cmd
-installer\build-installer.bat
-```
-This automated build script:
-1. Runs `npm run build` to compile TypeScript and copy web assets.
-2. Creates an isolated `installer\stage\` directory and runs `npm ci --omit=dev` to bundle only production dependencies.
-3. Bundles the local `node.exe` runtime as `tallydaybook.exe`.
-4. Compiles the package via Inno Setup 6 into `installer\output\TallyDayBookMailer-Setup.exe`.
-
-### 2. Client PC Installation
-- **No Prerequisites**: The client PC does not need Node.js or any runtime dependencies installed.
-- **Double-click `TallyDayBookMailer-Setup.exe`**:
-  - Installs cleanly per-user (no administrator privileges or UAC prompts required).
-  - Configures the app to start automatically and silently in the background at every Windows login (via `{userstartup}`).
-  - Places a **TallyDayBook Control Center** shortcut on the user's Desktop.
-  - Creates Start Menu entries for opening the Control Center, starting, and stopping the background process.
-- **Windows SmartScreen**: If Windows displays an "Unknown Publisher" warning on an unsigned setup file, click **More info** -> **Run anyway**.
-
-### 3. First-Time Setup on Client Machine
-1. Double-click the **TallyDayBook Control Center** shortcut on the Desktop (or browse to `http://127.0.0.1:9095`).
-2. Go to **Settings** and configure:
-   - **Sender Email & SMTP Password / App Password**
-   - **Recipient Email(s)**
-   - **Schedule Interval or Daily Export Time**
-3. Click **Save Configuration** and test connectivity using **Test Tally** and **Test Mail**.
-
----
-
-## 🖥️ Running as a Windows Service
-
-To ensure the application runs continuously in the background, starts automatically on Windows boot, and restarts automatically if it crashes:
-
-### Install Service
-Open PowerShell as **Administrator**:
-```powershell
-npm run service:install
-```
-*Note: A Windows UAC prompt will appear asking to authorize the service registration.*
-
-### Uninstall Service
-```powershell
-npm run service:uninstall
-```
-
-### Managing via Windows Service Manager
-- Press `Win + R`, type `services.msc`, and press Enter.
-- Locate **TallyDayBookMailer** in the list.
-- You can Start, Stop, or Restart the service directly from the Windows Services console.
-
----
-
-## 🎛️ Local Web UI (Control Center)
-
-Access **http://127.0.0.1:9095** from the machine hosting the service:
-
-- **Dashboard**: Real-time engine status (IDLE / RUNNING), last cycle timestamp, next run countdown, and per-company summary table with voucher counts and status badges.
-- **Actions**:
-  - **Send Now**: Triggers an immediate export cycle.
-  - **Test Tally**: Pings TallyPrime and displays all open company tabs.
-  - **Test Mail**: Verifies SMTP connection and authentication credentials.
-- **Settings Editor**: Modify schedule interval, voucher filters, period mode, recipients, and SMTP credentials with instant saving.
-- **Live Logs**: Real-time viewing of the last 100 log entries from the active daily log file.
-
----
-
-## 🔧 Troubleshooting Guide
-
-| Issue | Cause | Solution |
-| :--- | :--- | :--- |
-| `ECONNREFUSED 127.0.0.1:9000` | TallyPrime is closed or HTTP server is disabled. | Open TallyPrime. Press `F1 > Settings > Connectivity`, enable ODBC/Server, set port to 9000, and restart TallyPrime. |
-| `Configured company is not loaded` | Company is not open in one of TallyPrime's tabs. | Open the required company tab in TallyPrime, or set `"companies": "auto"` to automatically discover open tabs. |
-| `Invalid Login / Username and Password not accepted` | Incorrect SMTP password or missing App Password. | For Gmail / Office365, generate an App Password in your account security settings. |
-| Native Excel returns non-PK response | TallyPrime version does not support native binary XLSX streaming over HTTP. | The app automatically activates `XmlRebuildExporter`, which rebuilds the `.xlsx` identically via ExcelJS. |
-| `An export cycle is already in progress` | Previous cycle took longer than the interval. | The built-in lock safely skips the duplicate run to prevent TallyPrime congestion. It will run on the next interval. |
-
+- **Old version**: Ran as a hidden background Windows Service (`node-windows`), requiring administrator permissions and manual browser navigation to `127.0.0.1:9095`. Service scripts have been archived in `legacy/`.
+- **New version**: Modern Windows Desktop application with System Tray integration, single-instance control, automatic port conflict handling, and native notifications.

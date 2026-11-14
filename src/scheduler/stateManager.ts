@@ -1,6 +1,7 @@
 import * as fs from 'fs';
 import * as path from 'path';
 import { AppState, CompanyState } from '../config/types';
+import { getStateFilePath } from '../utils/appPaths';
 import { logger } from '../utils/logger';
 
 export class StateManager {
@@ -8,7 +9,7 @@ export class StateManager {
   private state: AppState;
 
   constructor(filePath?: string) {
-    this.stateFilePath = filePath || path.resolve(process.cwd(), 'state.json');
+    this.stateFilePath = filePath || getStateFilePath();
     this.state = this.loadState();
   }
 

@@ -12,6 +12,7 @@ import { MailerService } from '../mailer/mailer';
 import { buildExportFileName } from '../utils/sanitizer';
 import { formatDateTime } from '../mailer/templates';
 import { logger } from '../utils/logger';
+import { getExportsDir } from '../utils/appPaths';
 
 export interface CycleOverrideOptions {
   recipients?: string[];
@@ -728,7 +729,7 @@ export class ExportOrchestrator {
    * Saves copies of exported .xlsx files to the configured local folder
    */
   private saveLocalCopies(results: CompanyExportResult[]): void {
-    const outDir = path.resolve(process.cwd(), this.config.keepLocalCopies.outputFolder || './exports');
+    const outDir = this.config?.keepLocalCopies?.outputFolder ? path.resolve(this.config.keepLocalCopies.outputFolder) : getExportsDir();
     if (!fs.existsSync(outDir)) {
       try {
         fs.mkdirSync(outDir, { recursive: true });
@@ -756,8 +757,8 @@ export class ExportOrchestrator {
    * Cleans up local copies older than retentionDays
    */
   private cleanOldLocalCopies(): void {
-    const retentionDays = this.config.keepLocalCopies.retentionDays || 30;
-    const outDir = path.resolve(process.cwd(), this.config.keepLocalCopies.outputFolder || './exports');
+    const retentionDays = this.config?.keepLocalCopies?.retentionDays || 30;
+    const outDir = this.config?.keepLocalCopies?.outputFolder ? path.resolve(this.config.keepLocalCopies.outputFolder) : getExportsDir();
     if (!fs.existsSync(outDir)) return;
 
     try {

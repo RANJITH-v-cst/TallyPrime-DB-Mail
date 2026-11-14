@@ -1,5 +1,6 @@
 import * as fs from 'fs';
 import * as path from 'path';
+import { getExportsDir } from './appPaths';
 import { logger } from './logger';
 
 /**
@@ -21,7 +22,7 @@ export function getDefaultExportFolder(): string {
   } else if (userProfile && fs.existsSync(userProfile)) {
     desktopPath = userProfile;
   } else {
-    desktopPath = path.resolve(process.cwd(), 'exports');
+    desktopPath = getExportsDir();
   }
 
   return path.join(desktopPath, 'Advent DB Export');
@@ -58,7 +59,7 @@ export function resolveAndEnsureFolder(configuredFolder?: string): FolderCheckRe
     };
   } catch (err: any) {
     logger.warn(`Export folder "${targetPath}" is not writable (${err.message}). Falling back to local exports folder.`);
-    const fallbackPath = path.resolve(process.cwd(), 'exports');
+    const fallbackPath = getExportsDir();
 
     try {
       if (!fs.existsSync(fallbackPath)) {

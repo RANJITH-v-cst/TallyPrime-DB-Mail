@@ -2,6 +2,7 @@ import * as crypto from 'crypto';
 import * as os from 'os';
 import * as fs from 'fs';
 import * as path from 'path';
+import { getKeyFilePath } from './appPaths';
 
 const ALGORITHM = 'aes-256-gcm';
 const IV_LENGTH = 16;
@@ -10,15 +11,21 @@ const PREFIX = 'enc:';
 
 /**
  * Gets or creates a machine-local key for AES encryption at rest.
- * Uses a combination of machine identity and local secret file.
+ * Uses a combination of machine identity and local secret file in the data directory.
  */
 function getMachineDerivedKey(): Buffer {
-  const secretPath = path.resolve(process.cwd(), '.key');
+  const secretPath = getKeyFilePath();
   let secret = '';
 
   try {
     if (fs.existsSync(secretPath)) {
       secret = fs.readFileSync(secretPath, 'utf8').trim();
+    } else {
+      // Backwards compatibility check in process.cwd()
+      const fallbackPath = path.resolve(process.cwd(), '.key');
+      if (fs.existsSync(fallbackPath)) {
+        secret = fs.readFileSync(fallbackPath, 'utf8').trim();
+      }
     }
   } catch {
     // ignore read error
@@ -27,6 +34,8 @@ function getMachineDerivedKey(): Buffer {
   if (!secret) {
     secret = crypto.randomBytes(32).toString('hex');
     try {
+      const dir = path.dirname(secretPath);
+      if (!fs.existsSync(dir)) fs.mkdirSync(dir, { recursive: true });
       fs.writeFileSync(secretPath, secret, { mode: 0o600 });
     } catch {
       // fallback if unable to write file
@@ -82,7 +91,10 @@ export function decryptPassword(cipherText: string): string {
     decrypted += decipher.final('utf8');
     return decrypted;
   } catch (err: any) {
-    throw new Error(`Failed to decrypt SMTP password: ${err.message}`);
+    // If decryption fails (e.g. key mismatch or moved to another machine),
+    // log clear warning and return empty string instead of crashing the app.
+    console.warn(`[Crypto] Could not decrypt SMTP password (${err.message}). Please re-enter your SMTP password in Settings.`);
+    return '';
   }
 }
 

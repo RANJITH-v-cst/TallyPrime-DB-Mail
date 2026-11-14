@@ -2,8 +2,9 @@ import * as winston from 'winston';
 import 'winston-daily-rotate-file';
 import * as path from 'path';
 import * as fs from 'fs';
+import { getLogsDir } from './appPaths';
 
-const logsDir = path.resolve(process.cwd(), 'logs');
+const logsDir = getLogsDir();
 if (!fs.existsSync(logsDir)) {
   try {
     fs.mkdirSync(logsDir, { recursive: true });
