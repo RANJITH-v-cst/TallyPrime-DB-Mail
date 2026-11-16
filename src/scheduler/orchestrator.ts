@@ -590,12 +590,14 @@ export class ExportOrchestrator {
         fromDate = overrideOptions.fromDate || this.config.dayBook.fromDate || todayStr;
         toDate = overrideOptions.toDate || this.config.dayBook.toDate || todayStr;
       }
-    } else if (this.config.dayBook.fromDate && this.config.dayBook.toDate) {
-      effectivePeriodMode = 'customRange';
-      fromDate = this.config.dayBook.fromDate;
-      toDate = this.config.dayBook.toDate;
     } else {
-      effectivePeriodMode = this.config.dayBook.periodMode;
+      // Scheduled runs: honor the saved periodMode. Saved fromDate/toDate are only used when
+      // periodMode is explicitly 'customRange' (the Settings page keeps them even in 'today' mode).
+      effectivePeriodMode = this.config.dayBook.periodMode || 'today';
+      if (effectivePeriodMode === 'customRange') {
+        fromDate = this.config.dayBook.fromDate || todayStr;
+        toDate = this.config.dayBook.toDate || todayStr;
+      }
     }
 
     if (effectivePeriodMode === 'sinceLastRun' && reportName === 'Day Book') {
