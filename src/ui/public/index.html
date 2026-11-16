@@ -85,6 +85,61 @@
     .status-alert { padding: 12px 16px; border-radius: 6px; font-size: 13px; margin-bottom: 16px; display: none; }
     .alert-success { background: #ecfdf5; border: 1px solid #a7f3d0; color: #065f46; }
     .alert-danger { background: #fef2f2; border: 1px solid #fecaca; color: #991b1b; }
+
+    /* Supabase Auth Modal & User Header Styles */
+    .auth-overlay {
+      position: fixed;
+      top: 0; left: 0; right: 0; bottom: 0;
+      background: rgba(15, 23, 42, 0.85);
+      backdrop-filter: blur(8px);
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      z-index: 9999;
+      padding: 16px;
+    }
+    .auth-card {
+      background: #ffffff;
+      border-radius: 12px;
+      width: 100%;
+      max-width: 420px;
+      box-shadow: 0 20px 25px -5px rgba(0, 0, 0, 0.3), 0 8px 10px -6px rgba(0, 0, 0, 0.2);
+      border: 1px solid #e2e8f0;
+      overflow: hidden;
+      animation: authCardIn 0.25s ease-out;
+    }
+    @keyframes authCardIn {
+      from { opacity: 0; transform: scale(0.96) translateY(-10px); }
+      to { opacity: 1; transform: scale(1) translateY(0); }
+    }
+    .auth-header {
+      background: linear-gradient(135deg, #1e40af 0%, #1e3a8a 100%);
+      color: white;
+      padding: 24px 20px;
+      text-align: center;
+    }
+    .auth-header h2 { font-size: 20px; font-weight: 700; margin-bottom: 4px; }
+    .auth-header p { font-size: 13px; opacity: 0.9; }
+    .auth-body { padding: 24px; }
+    .auth-tabs { display: flex; border-bottom: 1px solid #e2e8f0; margin-bottom: 20px; }
+    .auth-tab-btn { flex: 1; padding: 10px; background: none; border: none; font-size: 14px; font-weight: 600; color: #64748b; cursor: pointer; text-align: center; border-bottom: 2px solid transparent; }
+    .auth-tab-btn.active { color: #1e40af; border-bottom-color: #1e40af; }
+    .auth-alert { padding: 10px 14px; border-radius: 6px; font-size: 13px; margin-bottom: 16px; display: none; }
+    .auth-alert.error { background: #fef2f2; border: 1px solid #fecaca; color: #991b1b; display: block; }
+    .auth-alert.success { background: #ecfdf5; border: 1px solid #a7f3d0; color: #065f46; display: block; }
+    .auth-footer { text-align: center; margin-top: 16px; font-size: 12px; color: #64748b; }
+    .user-profile-badge {
+      display: inline-flex;
+      align-items: center;
+      gap: 6px;
+      background: #eff6ff;
+      border: 1px solid #bfdbfe;
+      padding: 4px 10px;
+      border-radius: 6px;
+      font-size: 12px;
+      color: #1e40af;
+      font-weight: 600;
+    }
   </style>
 </head>
 <body>
@@ -97,7 +152,11 @@
           <p>Windows Middleware for Automated Multi-Company Day Book Dispatch</p>
         </div>
       </div>
-      <div class="header-actions">
+      <div class="header-actions" style="align-items: center;">
+        <div id="header-user-info" style="display: none; align-items: center; gap: 8px;">
+          <span class="user-profile-badge" id="header-user-email">👤 user@example.com</span>
+          <button class="btn-secondary" style="padding: 6px 12px; font-size: 12px;" onclick="handleSignOut()">🚪 Sign Out</button>
+        </div>
         <button class="btn-secondary" onclick="testTally()">Test Tally</button>
         <button class="btn-secondary" onclick="testMail()">Test Mail</button>
         <button class="btn-primary" id="btn-run-now" onclick="triggerQuickSend()">▶ Send Now</button>
@@ -575,6 +634,10 @@
     async function fetchStatus() {
       try {
         const res = await fetch('/api/status');
+        if (res.status === 401) {
+          showAuthModal();
+          return;
+        }
         const data = await res.json();
         
         const badge = document.getElementById('engine-status');
@@ -634,6 +697,10 @@
     async function fetchConfig() {
       try {
         const res = await fetch('/api/config');
+        if (res.status === 401) {
+          showAuthModal();
+          return;
+        }
         currentConfig = await res.json();
         
         document.getElementById('tally-host').value = currentConfig.tally.host;
@@ -1125,6 +1192,10 @@
     async function fetchLogs() {
       try {
         const res = await fetch('/api/logs');
+        if (res.status === 401) {
+          showAuthModal();
+          return;
+        }
         const data = await res.json();
         const box = document.getElementById('logs-container');
         box.innerText = (data.logs || []).join('\n');
@@ -1134,11 +1205,262 @@
       }
     }
 
-    // Auto-refresh status every 5 seconds
-    fetchConfig();
-    fetchStatus();
-    setInterval(fetchStatus, 5000);
+    // ==========================================
+    // Supabase Authentication Frontend Logic
+    // ==========================================
+    let currentUser = null;
+    let authPollingInterval = null;
+
+    function showAuthModal() {
+      const modal = document.getElementById('auth-modal');
+      if (modal) modal.style.display = 'flex';
+      const mainContainer = document.querySelector('.container');
+      if (mainContainer) mainContainer.style.filter = 'blur(3px)';
+      const headerUser = document.getElementById('header-user-info');
+      if (headerUser) headerUser.style.display = 'none';
+      if (authPollingInterval) {
+        clearInterval(authPollingInterval);
+        authPollingInterval = null;
+      }
+    }
+
+    function hideAuthModal() {
+      const modal = document.getElementById('auth-modal');
+      if (modal) modal.style.display = 'none';
+      const mainContainer = document.querySelector('.container');
+      if (mainContainer) mainContainer.style.filter = 'none';
+    }
+
+    function switchAuthTab(tab) {
+      const tabSignIn = document.getElementById('auth-tab-btn-signin');
+      const tabSignUp = document.getElementById('auth-tab-btn-signup');
+      const formSignIn = document.getElementById('auth-form-signin');
+      const formSignUp = document.getElementById('auth-form-signup');
+      const alertBox = document.getElementById('auth-alert');
+      if (alertBox) alertBox.style.display = 'none';
+
+      if (tab === 'signup') {
+        tabSignIn.classList.remove('active');
+        tabSignUp.classList.add('active');
+        formSignIn.style.display = 'none';
+        formSignUp.style.display = 'block';
+        document.getElementById('auth-signup-email')?.focus();
+      } else {
+        tabSignUp.classList.remove('active');
+        tabSignIn.classList.add('active');
+        formSignUp.style.display = 'none';
+        formSignIn.style.display = 'block';
+        document.getElementById('auth-login-email')?.focus();
+      }
+    }
+
+    function showAuthAlert(msg, isSuccess = false) {
+      const alertBox = document.getElementById('auth-alert');
+      if (!alertBox) return;
+      alertBox.className = isSuccess ? 'auth-alert success' : 'auth-alert error';
+      alertBox.innerText = msg;
+      alertBox.style.display = 'block';
+    }
+
+    async function checkAuthSession() {
+      try {
+        const res = await fetch('/api/auth/session');
+        const data = await res.json();
+        if (data.authenticated && data.user) {
+          currentUser = data.user;
+          onAuthSuccess(data.user);
+        } else {
+          showAuthModal();
+        }
+      } catch (err) {
+        showAuthModal();
+      }
+    }
+
+    function onAuthSuccess(user) {
+      hideAuthModal();
+      const headerUser = document.getElementById('header-user-info');
+      const emailEl = document.getElementById('header-user-email');
+      if (headerUser && emailEl) {
+        emailEl.innerText = `👤 ${user.email}`;
+        headerUser.style.display = 'inline-flex';
+      }
+
+      fetchConfig();
+      fetchStatus();
+      if (!authPollingInterval) {
+        authPollingInterval = setInterval(fetchStatus, 5000);
+      }
+    }
+
+    async function handleAuthLogin(e) {
+      if (e) e.preventDefault();
+      const email = document.getElementById('auth-login-email')?.value.trim();
+      const password = document.getElementById('auth-login-password')?.value;
+      const btn = document.getElementById('btn-auth-login-submit');
+
+      if (!email || !password) {
+        showAuthAlert('Please enter both email and password.');
+        return;
+      }
+
+      const origText = btn.innerText;
+      btn.innerText = 'Signing in...';
+      btn.disabled = true;
+
+      try {
+        const res = await fetch('/api/auth/login', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ email, password }),
+        });
+        const data = await res.json();
+
+        if (data.success && data.user) {
+          showAuthAlert('Signed in successfully!', true);
+          setTimeout(() => {
+            onAuthSuccess(data.user);
+          }, 300);
+        } else {
+          showAuthAlert(data.error || 'Invalid email or password.');
+        }
+      } catch (err) {
+        showAuthAlert('Sign in failed: ' + err.message);
+      } finally {
+        btn.innerText = origText;
+        btn.disabled = false;
+      }
+    }
+
+    async function handleAuthSignUp(e) {
+      if (e) e.preventDefault();
+      const email = document.getElementById('auth-signup-email')?.value.trim();
+      const password = document.getElementById('auth-signup-password')?.value;
+      const confirmPass = document.getElementById('auth-signup-confirm')?.value;
+      const btn = document.getElementById('btn-auth-signup-submit');
+
+      if (!email || !password) {
+        showAuthAlert('Please enter email and password.');
+        return;
+      }
+      if (password.length < 6) {
+        showAuthAlert('Password must be at least 6 characters.');
+        return;
+      }
+      if (password !== confirmPass) {
+        showAuthAlert('Passwords do not match.');
+        return;
+      }
+
+      const origText = btn.innerText;
+      btn.innerText = 'Creating account...';
+      btn.disabled = true;
+
+      try {
+        const res = await fetch('/api/auth/signup', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ email, password }),
+        });
+        const data = await res.json();
+
+        if (data.success) {
+          if (data.user && !data.message?.includes('confirm')) {
+            showAuthAlert('Account created and signed in!', true);
+            setTimeout(() => {
+              onAuthSuccess(data.user);
+            }, 500);
+          } else {
+            showAuthAlert(data.message || 'Account created! You can now sign in.', true);
+            setTimeout(() => {
+              switchAuthTab('signin');
+              const inEmail = document.getElementById('auth-login-email');
+              if (inEmail) inEmail.value = email;
+            }, 1200);
+          }
+        } else {
+          showAuthAlert(data.error || 'Sign up failed.');
+        }
+      } catch (err) {
+        showAuthAlert('Sign up failed: ' + err.message);
+      } finally {
+        btn.innerText = origText;
+        btn.disabled = false;
+      }
+    }
+
+    async function handleSignOut() {
+      if (!confirm('Are you sure you want to sign out?')) return;
+      try {
+        await fetch('/api/auth/logout', { method: 'POST' });
+      } catch {}
+      currentUser = null;
+      showAuthModal();
+      switchAuthTab('signin');
+    }
+
+    // Initialize Supabase Auth Session Verification
+    checkAuthSession();
   </script>
+
+  <!-- SUPABASE AUTHENTICATION MODAL -->
+  <div id="auth-modal" class="auth-overlay" style="display: none;">
+    <div class="auth-card">
+      <div class="auth-header">
+        <div class="logo-badge" style="width: 44px; height: 44px; display: flex; align-items: center; justify-content: center; margin: 0 auto 10px; font-size: 18px; border-radius: 8px;">TP</div>
+        <h2>TallyDayBookMailer</h2>
+        <p>Supabase Authentication Gateway</p>
+      </div>
+      <div class="auth-body">
+        <div id="auth-alert" class="auth-alert"></div>
+
+        <div class="auth-tabs">
+          <button id="auth-tab-btn-signin" class="auth-tab-btn active" onclick="switchAuthTab('signin')">Sign In</button>
+          <button id="auth-tab-btn-signup" class="auth-tab-btn" onclick="switchAuthTab('signup')">Create Account</button>
+        </div>
+
+        <!-- FORM 1: SIGN IN -->
+        <form id="auth-form-signin" onsubmit="handleAuthLogin(event)">
+          <div class="form-group">
+            <label for="auth-login-email">Email Address</label>
+            <input type="email" id="auth-login-email" placeholder="name@company.com" required autocomplete="email" />
+          </div>
+          <div class="form-group">
+            <label for="auth-login-password">Password</label>
+            <input type="password" id="auth-login-password" placeholder="••••••••" required autocomplete="current-password" />
+          </div>
+          <button type="submit" id="btn-auth-login-submit" class="btn-primary" style="width: 100%; padding: 10px; margin-top: 8px; font-size: 14px;">
+            Sign In
+          </button>
+          <div class="auth-footer">
+            Don't have an account? <a href="#" onclick="switchAuthTab('signup'); return false;" style="color: #1e40af; font-weight: 600; text-decoration: none;">Sign up here</a>
+          </div>
+        </form>
+
+        <!-- FORM 2: SIGN UP -->
+        <form id="auth-form-signup" onsubmit="handleAuthSignUp(event)" style="display: none;">
+          <div class="form-group">
+            <label for="auth-signup-email">Email Address</label>
+            <input type="email" id="auth-signup-email" placeholder="name@company.com" required autocomplete="email" />
+          </div>
+          <div class="form-group">
+            <label for="auth-signup-password">Password (min 6 characters)</label>
+            <input type="password" id="auth-signup-password" placeholder="••••••••" required autocomplete="new-password" minlength="6" />
+          </div>
+          <div class="form-group">
+            <label for="auth-signup-confirm">Confirm Password</label>
+            <input type="password" id="auth-signup-confirm" placeholder="••••••••" required autocomplete="new-password" minlength="6" />
+          </div>
+          <button type="submit" id="btn-auth-signup-submit" class="btn-primary" style="width: 100%; padding: 10px; margin-top: 8px; font-size: 14px; background: #059669;">
+            Create Account
+          </button>
+          <div class="auth-footer">
+            Already have an account? <a href="#" onclick="switchAuthTab('signin'); return false;" style="color: #1e40af; font-weight: 600; text-decoration: none;">Sign in here</a>
+          </div>
+        </form>
+      </div>
+    </div>
+  </div>
 </body>
 </html>
 

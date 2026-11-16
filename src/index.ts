@@ -4,6 +4,7 @@ import { StateManager } from './scheduler/stateManager';
 import { ExportOrchestrator } from './scheduler/orchestrator';
 import { AppScheduler } from './scheduler/scheduler';
 import { WebUiServer } from './ui/server';
+import { SupabaseAuthService } from './auth/supabaseAuth';
 import { logger } from './utils/logger';
 
 export interface AppInstance {
@@ -12,6 +13,7 @@ export interface AppInstance {
   orchestrator: ExportOrchestrator;
   scheduler: AppScheduler;
   webUi: WebUiServer | null;
+  authService?: SupabaseAuthService;
   port?: number;
   shutdown: (signal?: string) => Promise<void>;
 }
@@ -46,9 +48,10 @@ export async function startApp(options: StartAppOptions = {}): Promise<AppInstan
     }
   }
 
-  // Web UI Server
+  // Web UI Server & Supabase Authentication
   let webUi: WebUiServer | null = null;
   let runningPort: number | undefined;
+  const authService = new SupabaseAuthService();
 
   const noUi = options.noUi ?? args.includes('--no-ui');
   if (config.webUi?.enabled !== false && !noUi && !isRunOnce) {
@@ -59,7 +62,8 @@ export async function startApp(options: StartAppOptions = {}): Promise<AppInstan
       stateManager,
       (newConfig) => {
         scheduler.updateConfig(newConfig);
-      }
+      },
+      authService
     );
     try {
       const portToUse = options.preferredPort ?? config.webUi?.port ?? 9095;
@@ -93,6 +97,7 @@ export async function startApp(options: StartAppOptions = {}): Promise<AppInstan
     orchestrator,
     scheduler,
     webUi,
+    authService,
     port: runningPort,
     shutdown,
   };

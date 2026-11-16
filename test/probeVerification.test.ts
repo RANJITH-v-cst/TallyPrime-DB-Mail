@@ -106,7 +106,6 @@ describe('Tally Day Book Native Probe Verification', () => {
       toDate: '20260410',
       reportId: 'Day Book',
     });
-
     expect(result.success).toBe(true);
     expect(result.fileBuffer).toBeDefined();
 
@@ -114,14 +113,11 @@ describe('Tally Day Book Native Probe Verification', () => {
     const cleanName = sanitizeCompanyForFilename('`Ranjith Enterprices');
     const requestFile = path.join(debugDir, `${cleanName}_request.xml`);
     const responseFile = path.join(debugDir, `${cleanName}_response.xlsx`);
-
     expect(fs.existsSync(requestFile)).toBe(true);
     expect(fs.existsSync(responseFile)).toBe(true);
-
     const savedBuf = fs.readFileSync(responseFile);
     expect(savedBuf[0]).toBe(0x50); // 'P'
     expect(savedBuf[1]).toBe(0x4b); // 'K'
-
     // STEP 4 Verification
     const verification = await verifyExportedExcel(responseFile);
     expect(verification.headerPass).toBe(true);

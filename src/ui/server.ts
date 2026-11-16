@@ -12,6 +12,7 @@ import { MailerService } from '../mailer/mailer';
 import { AppScheduler } from '../scheduler/scheduler';
 import { ExportOrchestrator, CycleOverrideOptions } from '../scheduler/orchestrator';
 import { StateManager } from '../scheduler/stateManager';
+import { SupabaseAuthService } from '../auth/supabaseAuth';
 import { logger } from '../utils/logger';
 
 const packageJson = require('../../package.json');
@@ -21,22 +22,29 @@ export class WebUiServer {
   private server: any = null;
   private host: string;
   private port: number;
+  private authService: SupabaseAuthService;
 
   constructor(
     private config: AppConfig,
     private scheduler: AppScheduler,
     private orchestrator: ExportOrchestrator,
     private stateManager: StateManager,
-    private onConfigUpdate: (newConfig: AppConfig) => void
+    private onConfigUpdate: (newConfig: AppConfig) => void,
+    authService?: SupabaseAuthService
   ) {
     this.app = express();
     this.host = '127.0.0.1'; // Strictly localhost only
     this.port = config.webUi?.port || 9095;
+    this.authService = authService || new SupabaseAuthService();
     this.setupRoutes();
   }
 
   public getPort(): number {
     return this.port;
+  }
+
+  public getAuthService(): SupabaseAuthService {
+    return this.authService;
   }
 
   private setupRoutes(): void {
@@ -52,6 +60,62 @@ export class WebUiServer {
     ];
     const publicDir = candidateDirs.find((d) => fs.existsSync(path.join(d, 'index.html'))) || path.resolve(__dirname, 'public');
     this.app.use(express.static(publicDir));
+
+    // ==========================================
+    // Supabase Authentication Endpoints (Public)
+    // ==========================================
+    this.app.get('/api/auth/session', async (req: Request, res: Response) => {
+      const isAuth = this.authService.isAuthenticated();
+      const user = this.authService.getCurrentUser();
+      res.json({ authenticated: isAuth, user });
+    });
+
+    this.app.post('/api/auth/login', async (req: Request, res: Response) => {
+      const { email, password } = req.body || {};
+      if (!email || !password) {
+        return res.status(400).json({ success: false, error: 'Email and password are required' });
+      }
+      const result = await this.authService.signIn(email, password);
+      if (result.success) {
+        return res.json({ success: true, user: result.user });
+      }
+      return res.status(401).json({ success: false, error: result.error || 'Authentication failed' });
+    });
+
+    this.app.post('/api/auth/signup', async (req: Request, res: Response) => {
+      const { email, password } = req.body || {};
+      if (!email || !password) {
+        return res.status(400).json({ success: false, error: 'Email and password are required' });
+      }
+      if (typeof password === 'string' && password.length < 6) {
+        return res.status(400).json({ success: false, error: 'Password must be at least 6 characters' });
+      }
+      const result = await this.authService.signUp(email, password);
+      if (result.success) {
+        return res.json({ success: true, user: result.user, message: result.message });
+      }
+      return res.status(400).json({ success: false, error: result.error || 'Sign up failed' });
+    });
+
+    this.app.post('/api/auth/logout', async (req: Request, res: Response) => {
+      await this.authService.signOut();
+      res.json({ success: true, message: 'Logged out successfully' });
+    });
+
+    // Guard all other /api/* routes: require active Supabase authentication
+    this.app.use('/api', (req: Request, res: Response, next) => {
+      if (req.path.startsWith('/auth')) {
+        return next();
+      }
+      if (!this.authService.isAuthenticated()) {
+        return res.status(401).json({
+          success: false,
+          error: 'Authentication required. Please sign in with your Supabase account.',
+          requireAuth: true,
+        });
+      }
+      next();
+    });
 
     // API: Current Status
     this.app.get('/api/status', (req: Request, res: Response) => {

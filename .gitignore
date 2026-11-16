@@ -2,6 +2,7 @@
 config.json
 state.json
 .key
+.env
 
 # Build output
 dist/
