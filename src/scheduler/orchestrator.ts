@@ -437,13 +437,17 @@ export class ExportOrchestrator {
       const bccCount = effectiveConfig.mail.recipients.bcc?.length || 0;
       logger.info(`Dispatching export summary email for ${results.length} export(s) to ${toCount} recipient(s) (CC: ${ccCount}, BCC: ${bccCount})...`);
 
-      const emailSent = await this.mailer.sendDayBookEmail({
+      const sendResult = await this.mailer.sendDayBookEmail({
         summary,
         config: effectiveConfig,
         date: startTime,
       });
 
-      summary.emailSent = emailSent;
+      summary.emailSent = sendResult.success;
+      if (!sendResult.success) {
+        summary.emailError = sendResult.error || 'SMTP dispatch failed. Please check your SMTP settings and Google App Password.';
+        logger.error(`Scheduled email dispatch failed: ${summary.emailError}`);
+      }
       this.stateManager.setLastCycleTime(completedTime.toISOString());
 
       // Retention cleanup strictly inside common export folder

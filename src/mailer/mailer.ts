@@ -113,7 +113,7 @@ export class MailerService {
   /**
    * Sends export report email with attachments, with 3x retry and exponential backoff
    */
-  public async sendDayBookEmail(options: SendEmailOptions): Promise<boolean> {
+  public async sendDayBookEmail(options: SendEmailOptions): Promise<{ success: boolean; error?: string }> {
     const { summary, config, date = new Date() } = options;
     const successfulResults = summary.results.filter((r) => r.status === 'OK' && r.fileBuffer);
 
@@ -188,7 +188,7 @@ export class MailerService {
   /**
    * Sends an alert email (e.g. TallyPrime down or total failure)
    */
-  public async sendAlert(title: string, message: string, details?: string): Promise<boolean> {
+  public async sendAlert(title: string, message: string, details?: string): Promise<{ success: boolean; error?: string }> {
     const html = buildAlertEmailHtml(title, message, details);
     return this.sendWithRetry({
       from: this.config.smtp.from || this.config.smtp.user,
@@ -203,14 +203,15 @@ export class MailerService {
   /**
    * Helper to send an email with 3 retries and exponential backoff
    */
-  private async sendWithRetry(mailOptions: nodemailer.SendMailOptions, maxRetries = 3): Promise<boolean> {
+  private async sendWithRetry(mailOptions: nodemailer.SendMailOptions, maxRetries = 3): Promise<{ success: boolean; error?: string }> {
     if (!this.transporter) {
       logger.error('Transporter not initialized. Cannot send email.');
-      return false;
+      return { success: false, error: 'Transporter not initialized' };
     }
 
     let attempt = 0;
     let delay = 2000; // start 2 seconds
+    let lastError = '';
 
     const toCount = Array.isArray(mailOptions.to) ? mailOptions.to.length : (mailOptions.to ? 1 : 0);
     const ccCount = Array.isArray(mailOptions.cc) ? mailOptions.cc.length : (mailOptions.cc ? 1 : 0);
@@ -222,8 +223,9 @@ export class MailerService {
         logger.info(`Sending email (attempt ${attempt}/${maxRetries}) to ${toCount} recipient(s) (CC: ${ccCount}, BCC: ${bccCount})`);
         const info = await this.transporter.sendMail(mailOptions);
         logger.info(`Email successfully dispatched! Message ID: ${info.messageId}`);
-        return true;
+        return { success: true };
       } catch (err: any) {
+        lastError = err.message;
         logger.error(`Email send attempt ${attempt} failed: ${err.message}`);
         if (attempt < maxRetries) {
           logger.info(`Waiting ${delay}ms before next retry...`);
@@ -234,7 +236,7 @@ export class MailerService {
     }
 
     logger.error(`All ${maxRetries} email send attempts failed.`);
-    return false;
+    return { success: false, error: lastError };
   }
 }
 

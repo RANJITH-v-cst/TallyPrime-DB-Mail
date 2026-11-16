@@ -263,6 +263,8 @@
         </div>
       </div>
 
+      <div id="email-dispatch-banner" style="display: none; margin-bottom: 20px; padding: 12px 16px; border-radius: 8px; font-size: 13px;"></div>
+
       <div class="table-container">
         <table>
           <thead>
@@ -672,6 +674,31 @@
         } else {
           document.getElementById('next-run-time').innerText = '--';
         }
+
+        const dispatchBanner = document.getElementById('email-dispatch-banner');
+        if (dispatchBanner) {
+          if (data.lastSummary) {
+            if (data.lastSummary.emailSent) {
+              dispatchBanner.style.display = 'block';
+              dispatchBanner.style.background = '#ecfdf5';
+              dispatchBanner.style.border = '1px solid #a7f3d0';
+              dispatchBanner.style.color = '#065f46';
+              dispatchBanner.innerHTML = `📬 <strong>Email Dispatched Successfully:</strong> Day Book export was delivered to configured recipients.`;
+            } else if (data.lastSummary.emailSent === false || data.lastSummary.emailError) {
+              dispatchBanner.style.display = 'block';
+              dispatchBanner.style.background = '#fef2f2';
+              dispatchBanner.style.border = '1px solid #fecaca';
+              dispatchBanner.style.color = '#991b1b';
+              const err = data.lastSummary.emailError || 'Google SMTP rejected login credentials (BadCredentials).';
+              dispatchBanner.innerHTML = `⚠️ <strong>Email Delivery Blocked:</strong> ${err}<br/><span style="font-size: 11px; color: #b91c1c;">Vouchers were exported to Excel properly, but your SMTP sender account could not send the email. Go to <strong>Settings</strong> to update your Google App Password.</span>`;
+            } else {
+              dispatchBanner.style.display = 'none';
+            }
+          } else {
+            dispatchBanner.style.display = 'none';
+          }
+        }
+
         if (data.version) {
           const vElem = document.getElementById('app-version-footer');
           if (vElem) vElem.innerText = `Version ${data.version}`;
