@@ -484,14 +484,14 @@
               <div class="form-group">
                 <label>Schedule Mode</label>
                 <select id="schedule-mode" onchange="toggleScheduleFields()">
-                  <option value="daily">Daily at 8:00 PM (20:00) (Recommended)</option>
+                  <option value="daily">Daily at Scheduled Time (Recommended)</option>
                   <option value="interval">Interval (Every N minutes)</option>
                 </select>
               </div>
               <div id="daily-time-group" class="form-group">
                 <label>Daily Export Time (HH:mm)</label>
-                <input type="text" id="daily-time" placeholder="20:00" />
-                <div class="hint">24-hour format (e.g. 20:00). Exports Day Book for current date every night at 8 o'clock.</div>
+                <input type="time" id="daily-time" step="60" value="20:00" style="font-weight: 600; font-size: 14px;" />
+                <div class="hint">Select the daily export time (e.g. 20:00 for 8:00 PM). Exports Day Book for current date every day at this exact time.</div>
               </div>
               <div id="interval-mins-group" class="form-group" style="display: none;">
                 <label>Schedule Interval (Minutes)</label>
@@ -628,6 +628,18 @@
       setTimeout(() => { banner.style.display = 'none'; }, 7000);
     }
 
+    function formatTime12h(timeStr) {
+      if (!timeStr) return '';
+      const parts = timeStr.trim().split(':');
+      let h = parseInt(parts[0], 10);
+      const m = parseInt(parts[1] || '0', 10);
+      if (isNaN(h)) return timeStr;
+      const ampm = h >= 12 ? 'PM' : 'AM';
+      const h12 = h % 12 || 12;
+      const mPad = m < 10 ? '0' + m : m;
+      return `${h12}:${mPad} ${ampm}`;
+    }
+
     async function fetchStatus() {
       try {
         const res = await fetch('/api/status');
@@ -646,13 +658,20 @@
 
         const sched = data.schedule || {};
         if (sched.mode === 'daily') {
-          const time = sched.dailyTime || '20:00';
-          document.getElementById('interval-display').innerText = `Daily at ${time} (8 PM)`;
+          const time = (sched.dailyTime || '20:00').trim();
+          document.getElementById('interval-display').innerText = `Daily at ${time} (${formatTime12h(time)})`;
         } else {
-          document.getElementById('interval-display').innerText = `${data.intervalMinutes || 30} min`;
+          document.getElementById('interval-display').innerText = `Every ${data.intervalMinutes || 30} mins`;
         }
         document.getElementById('last-cycle-time').innerText = data.lastCycleTimestamp ? new Date(data.lastCycleTimestamp).toLocaleTimeString() : 'Never';
-        document.getElementById('next-run-time').innerText = data.nextRun ? new Date(data.nextRun).toLocaleTimeString() : '--';
+        if (data.nextRun) {
+          const nextDate = new Date(data.nextRun);
+          const isToday = nextDate.toDateString() === new Date().toDateString();
+          const timeStr = nextDate.toLocaleTimeString([], { hour: '2-digit', minute: '2-digit', second: '2-digit' });
+          document.getElementById('next-run-time').innerText = isToday ? timeStr : `${timeStr} (Tomorrow)`;
+        } else {
+          document.getElementById('next-run-time').innerText = '--';
+        }
         if (data.version) {
           const vElem = document.getElementById('app-version-footer');
           if (vElem) vElem.innerText = `Version ${data.version}`;

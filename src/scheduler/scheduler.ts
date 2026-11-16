@@ -15,7 +15,7 @@ export class AppScheduler {
     private orchestrator: ExportOrchestrator
   ) {}
 
-  public updateConfig(newConfig: AppConfig): void {
+  public async updateConfig(newConfig: AppConfig): Promise<void> {
     const scheduleChanged =
       this.config.schedule.mode !== newConfig.schedule.mode ||
       this.config.schedule.dailyTime !== newConfig.schedule.dailyTime ||
@@ -26,8 +26,16 @@ export class AppScheduler {
 
     if (scheduleChanged) {
       logger.info(`Scheduler configuration changed. Reconfiguring scheduler...`);
-      this.stop();
-      this.start();
+      if (this.intervalTimer) {
+        clearInterval(this.intervalTimer);
+        this.intervalTimer = null;
+      }
+      if (this.cronJob) {
+        this.cronJob.stop();
+        this.cronJob = null;
+      }
+      this.isShuttingDown = false;
+      await this.start();
     }
   }
 
@@ -57,23 +65,28 @@ export class AppScheduler {
    * Starts the scheduler: supports both Daily mode (e.g. 20:00 every night) and Interval mode.
    */
   public async start(): Promise<void> {
-    if (this.isShuttingDown) return;
+    this.isShuttingDown = false;
 
     const schedule = this.config.schedule;
     const isDaily = (schedule.mode || 'daily') === 'daily';
-    const dailyTime = schedule.dailyTime || '20:00';
+    const dailyTime = (schedule.dailyTime || '20:00').trim();
 
     if (isDaily) {
       const [hStr, mStr] = dailyTime.split(':');
-      const hour = parseInt(hStr || '20', 10);
-      const minute = parseInt(mStr || '0', 10);
+      const hour = Math.min(23, Math.max(0, parseInt(hStr || '20', 10) || 0));
+      const minute = Math.min(59, Math.max(0, parseInt(mStr || '0', 10) || 0));
       const cronExpr = `${minute} ${hour} * * *`;
 
-      logger.info(`Starting scheduler in DAILY mode: Exports every night at ${dailyTime} (8:00 PM)`);
+      const ampm = hour >= 12 ? 'PM' : 'AM';
+      const h12 = hour % 12 || 12;
+      const mPad = minute < 10 ? `0${minute}` : `${minute}`;
+      const timeFormatted = `${h12}:${mPad} ${ampm}`;
+
+      logger.info(`Starting scheduler in DAILY mode: Exports every day at ${dailyTime} (${timeFormatted})`);
       this.calculateNextDailyRun(hour, minute);
 
       this.cronJob = cron.schedule(cronExpr, async () => {
-        logger.info(`Executing scheduled nightly export cycle at ${dailyTime}...`);
+        logger.info(`Executing scheduled daily export cycle at ${dailyTime} (${timeFormatted})...`);
         await this.executeProtectedCycle('Daily Nightly Export');
         this.calculateNextDailyRun(hour, minute);
       });

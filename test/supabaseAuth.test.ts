@@ -3,8 +3,9 @@ import { SupabaseAuthService } from '../src/auth/supabaseAuth';
 describe('Supabase Authentication Service Tests', () => {
   let authService: SupabaseAuthService;
 
-  beforeEach(() => {
+  beforeEach(async () => {
     authService = new SupabaseAuthService();
+    await authService.signOut();
   });
 
   test('1. Default authentication state is unauthenticated when no session file exists', () => {

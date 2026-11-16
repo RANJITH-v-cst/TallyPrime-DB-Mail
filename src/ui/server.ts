@@ -29,7 +29,7 @@ export class WebUiServer {
     private scheduler: AppScheduler,
     private orchestrator: ExportOrchestrator,
     private stateManager: StateManager,
-    private onConfigUpdate: (newConfig: AppConfig) => void,
+    private onConfigUpdate: (newConfig: AppConfig) => void | Promise<void>,
     authService?: SupabaseAuthService
   ) {
     this.app = express();
@@ -152,7 +152,7 @@ export class WebUiServer {
     });
 
     // API: Save Config (validates, merges into existing config, and writes config.json atomically)
-    this.app.post('/api/config', (req: Request, res: Response) => {
+    this.app.post('/api/config', async (req: Request, res: Response) => {
       try {
         const incoming = req.body as Partial<AppConfig>;
 
@@ -170,7 +170,7 @@ export class WebUiServer {
         this.config = merged;
 
         // Propagate updated config to scheduler and orchestrator immediately
-        this.onConfigUpdate(merged);
+        await Promise.resolve(this.onConfigUpdate(merged));
         this.orchestrator.updateConfig(merged);
 
         const toCount = merged.mail.recipients.to.length;

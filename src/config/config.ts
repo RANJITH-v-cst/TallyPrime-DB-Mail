@@ -126,6 +126,15 @@ export function validateConfig(config: Partial<AppConfig>): { valid: boolean; er
     }
   }
 
+  if (config.schedule?.mode === 'daily') {
+    const dailyTime = (config.schedule.dailyTime || '').trim();
+    if (!dailyTime) {
+      errors.push('schedule.dailyTime is required when schedule.mode is "daily"');
+    } else if (!/^([0-1]?[0-9]|2[0-3]):[0-5][0-9]$/.test(dailyTime)) {
+      errors.push(`schedule.dailyTime '${dailyTime}' is invalid. Please use 24-hour HH:mm format (e.g. 20:00)`);
+    }
+  }
+
   if (!config.schedule?.intervalMinutes || config.schedule.intervalMinutes < 1) {
     errors.push('schedule.intervalMinutes must be at least 1 minute');
   }
