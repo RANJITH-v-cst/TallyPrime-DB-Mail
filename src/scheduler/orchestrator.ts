@@ -154,21 +154,33 @@ export class ExportOrchestrator {
     this.cycleStartTime = Date.now();
     this.isCancelled = false;
     this.watchdogTriggered = false;
+
+    try {
+      return await this.runCycleInternal(overrideOptions, false);
+    } finally {
+      this.isCycleRunning = false;
+      this.cycleStartTime = null;
+      this.currentCompany = '';
+      this.currentStep = 'idle';
+      this.cycleAbortController = null;
+    }
+  }
+
+  private async runCycleInternal(
+    overrideOptions?: CycleOverrideOptions,
+    isRetry: boolean = false
+  ): Promise<ExportCycleSummary> {
+    // Requirement 2: Reset native-skip cycle state at the start of each cycle
+    this.exporterFactory.resetCycleState();
+
     this.cycleAbortController = new AbortController();
     this.completedCompaniesCount = 0;
     this.totalCompaniesCount = 0;
-    this.currentStep = 'Initializing export cycle...';
+    this.currentStep = isRetry ? 'Retrying export cycle...' : 'Initializing export cycle...';
     this.currentCompany = '';
 
     const startTime = new Date();
     const cycleDateStr = this.toYyyyMmDd(startTime);
-    const cycleDeadlineMs = this.config.tally.cycleDeadlineMs || 900000;
-    const cycleTimer = setTimeout(() => {
-      logger.warn(`Per-cycle deadline (${cycleDeadlineMs / 1000}s) reached! Aborting cycle requests.`);
-      if (this.cycleAbortController) {
-        this.cycleAbortController.abort();
-      }
-    }, cycleDeadlineMs);
 
     // Always reload latest configuration from disk so edits/recipient updates are picked up without restart
     // (Skip in test environments so custom mock test configurations aren't overwritten)
@@ -181,9 +193,23 @@ export class ExportOrchestrator {
       }
     }
 
-    // Bug 1 fix: if overrideOptions has fromDate+toDate, force periodMode to customRange
-    // so that a saved config with periodMode "today" does NOT silently wipe the override.
-    if (overrideOptions?.fromDate && overrideOptions?.toDate) {
+    // Requirement 4: Set default companyDeadlineMs to 240000 (4m)
+    const companyDeadlineMs = overrideOptions?.companyDeadlineMs || this.config.tally.companyDeadlineMs || 240000;
+
+    // Initial cycle deadline before discovery
+    let cycleDeadlineMs = this.config.tally.cycleDeadlineMs || 900000;
+    let cycleTimer = setTimeout(() => {
+      logger.warn(`Per-cycle deadline (${cycleDeadlineMs / 1000}s) reached! Aborting cycle requests.`);
+      if (this.cycleAbortController) {
+        this.cycleAbortController.abort();
+      }
+    }, cycleDeadlineMs);
+
+    // If periodMode is explicitly specified as today, ensure fromDate and toDate do not force customRange
+    if (overrideOptions?.periodMode === 'today') {
+      overrideOptions.fromDate = undefined;
+      overrideOptions.toDate = undefined;
+    } else if (overrideOptions?.fromDate && overrideOptions?.toDate) {
       overrideOptions.periodMode = 'customRange';
     } else if (!overrideOptions?.periodMode && overrideOptions?.fromDate) {
       overrideOptions.periodMode = 'customRange';
@@ -192,7 +218,7 @@ export class ExportOrchestrator {
     const activeReportType = overrideOptions?.reportType || this.config.dayBook.reportType || 'Day Book';
 
     logger.info('=====================================================');
-    logger.info(`Starting Tally export cycle (${activeReportType}) at ${formatDateTime(startTime)}`);
+    logger.info(`Starting Tally export cycle (${activeReportType})${isRetry ? ' [RETRY ATTEMPT]' : ''} at ${formatDateTime(startTime)}`);
     logger.info('=====================================================');
 
     const results: CompanyExportResult[] = [];
@@ -200,7 +226,7 @@ export class ExportOrchestrator {
     try {
       this.currentStep = 'Testing Tally connection...';
       // Step 1: Check Tally connection & discover open companies
-      const isReachable = await this.tallyClient.ping(this.cycleAbortController.signal);
+      const isReachable = await this.tallyClient.ping(this.cycleAbortController.signal, 'GLOBAL');
       if (!isReachable) {
         const errorMsg = `TallyPrime is unreachable at ${this.config.tally.host}:${this.config.tally.port}. Check if Tally is running.`;
         logger.error(errorMsg);
@@ -245,6 +271,16 @@ export class ExportOrchestrator {
 
       this.totalCompaniesCount = targetCompanies.length;
 
+      // Requirement 4: cycleDeadlineMs = companies * companyDeadlineMs + 60000
+      cycleDeadlineMs = (targetCompanies.length || 1) * companyDeadlineMs + 60000;
+      clearTimeout(cycleTimer);
+      cycleTimer = setTimeout(() => {
+        logger.warn(`Per-cycle deadline (${cycleDeadlineMs / 1000}s) reached! Aborting cycle requests.`);
+        if (this.cycleAbortController) {
+          this.cycleAbortController.abort();
+        }
+      }, cycleDeadlineMs);
+
       if (targetCompanies.length === 0) {
         logger.warn('No open companies found in TallyPrime. Nothing to export.');
       }
@@ -264,16 +300,30 @@ export class ExportOrchestrator {
         const company = targetCompanies[i];
         this.currentCompany = company;
 
-        // Check if cycle was cancelled or cycle deadline exceeded
-        if (this.isCancelled || this.cycleAbortController?.signal.aborted || (Date.now() - startTime.getTime() >= cycleDeadlineMs)) {
-          logger.warn(`Cycle stopping due to cancellation or cycle deadline. Skipping remaining company "${company}".`);
+        // Check if user cancelled
+        if (this.isCancelled) {
+          logger.warn(`Cycle stopping due to user cancellation. Skipping remaining company "${company}".`);
           results.push({
             companyName: company,
             status: 'FAILED',
             voucherCount: 0,
             periodText: '--',
             generatedAt: formatDateTime(new Date()),
-            error: this.isCancelled ? 'Cycle cancelled by user' : 'Cycle deadline exceeded',
+            error: 'Cycle cancelled by user',
+          });
+          continue;
+        }
+
+        // Check if cycle deadline exceeded
+        if (this.cycleAbortController?.signal.aborted || (Date.now() - startTime.getTime() >= cycleDeadlineMs)) {
+          logger.warn(`Cycle stopping due to cycle deadline. Skipping remaining company "${company}".`);
+          results.push({
+            companyName: company,
+            status: 'FAILED',
+            voucherCount: 0,
+            periodText: '--',
+            generatedAt: formatDateTime(new Date()),
+            error: 'Timed out - Tally may be busy',
           });
           continue;
         }
@@ -315,8 +365,43 @@ export class ExportOrchestrator {
           continue;
         }
 
-        // Per-company deadline: config tally.companyDeadlineMs (default 120000ms = 2m)
-        const companyDeadlineMs = overrideOptions?.companyDeadlineMs || this.config.tally.companyDeadlineMs || 120000;
+        // Requirement 3: Before each company export, call tallyClient.ping() (5s timeout).
+        // If Tally does not answer, poll every 5s for up to 90s.
+        // If it still does not answer, mark that company FAILED with "Tally busy / not responding" and send no more heavy requests.
+        this.currentStep = `Checking Tally responsiveness for "${company}"...`;
+        let pingOk = await this.tallyClient.ping(this.cycleAbortController?.signal, company);
+        if (!pingOk) {
+          logger.warn(`Tally did not answer initial ping for "${company}". Polling every 5s for up to 90s...`);
+          const pollStart = Date.now();
+          while (Date.now() - pollStart < 90000 && !this.cycleAbortController?.signal.aborted && !this.isCancelled) {
+            await new Promise((resolve) => setTimeout(resolve, 5000));
+            if (this.cycleAbortController?.signal.aborted || this.isCancelled) break;
+            pingOk = await this.tallyClient.ping(this.cycleAbortController?.signal, company);
+            if (pingOk) {
+              logger.info(`Tally became responsive for "${company}" after ${Math.round((Date.now() - pollStart) / 1000)}s.`);
+              break;
+            }
+          }
+        }
+
+        if (!pingOk) {
+          logger.error(`Tally did not answer within 90s for "${company}". Marking FAILED with "Tally busy / not responding" and skipping heavy requests.`);
+          for (const rep of reportsToExport) {
+            results.push({
+              companyName: rep === 'Day Book' ? company : `${company} (${rep})`,
+              status: 'FAILED',
+              voucherCount: 0,
+              periodText: '--',
+              generatedAt: formatDateTime(new Date()),
+              error: 'Tally busy / not responding',
+            });
+          }
+          consecutiveTimeouts++;
+          this.completedCompaniesCount++;
+          continue;
+        }
+
+        // Per-company deadline (default 240000ms = 4m)
         const companyAbort = new AbortController();
 
         const onCycleAbort = () => companyAbort.abort();
@@ -324,8 +409,10 @@ export class ExportOrchestrator {
           this.cycleAbortController.signal.addEventListener('abort', onCycleAbort, { once: true });
         }
 
+        let companyTimeoutOccurred = false;
         const companyTimer = setTimeout(() => {
           logger.warn(`Per-company deadline (${companyDeadlineMs / 1000}s) reached for "${company}". Aborting requests.`);
+          companyTimeoutOccurred = true;
           companyAbort.abort();
         }, companyDeadlineMs);
 
@@ -340,14 +427,15 @@ export class ExportOrchestrator {
               rep,
               exportFolder,
               overrideOptions,
-              companyAbort.signal
+              companyAbort.signal,
+              companyTimeoutOccurred
             );
             results.push(result);
 
             if (
               result.status === 'FAILED' &&
               result.error &&
-              /Timed out|timeout|ECONNRESET|ECONNREFUSED|ETIMEDOUT|ECONNABORTED|canceled|aborted/i.test(result.error)
+              /Timed out|timeout|ECONNRESET|ECONNREFUSED|ETIMEDOUT|ECONNABORTED|busy|not responding/i.test(result.error)
             ) {
               hadTimeout = true;
             }
@@ -364,6 +452,37 @@ export class ExportOrchestrator {
           consecutiveTimeouts++;
         } else {
           consecutiveTimeouts = 0;
+        }
+      }
+
+      // Requirement 5: If every company failed with a timeout/busy error, wait 3 minutes and run the whole cycle once more
+      // before sending the "All Companies Failed" alert. Respect the existing cycle lock.
+      const isAllFailedTimeoutOrBusy =
+        results.length > 0 &&
+        results.every(
+          (r) =>
+            r.status === 'FAILED' &&
+            r.error &&
+            /Timed out|timeout|busy|not responding|ECONNRESET|ECONNREFUSED|ETIMEDOUT|ECONNABORTED/i.test(r.error)
+        );
+
+      if (isAllFailedTimeoutOrBusy && !isRetry && !this.isCancelled) {
+        logger.warn(
+          'All companies failed with timeout/busy error. Waiting 3 minutes before retrying the entire export cycle once...'
+        );
+        this.currentStep = 'All companies timed out. Waiting 3m before cycle retry...';
+        clearTimeout(cycleTimer);
+
+        const waitDurationMs = 180000;
+        const waitStart = Date.now();
+        while (Date.now() - waitStart < waitDurationMs && !this.isCancelled) {
+          const sleepChunk = Math.min(1000, waitDurationMs - (Date.now() - waitStart));
+          await new Promise((resolve) => setTimeout(resolve, sleepChunk));
+        }
+
+        if (!this.isCancelled) {
+          logger.info('3-minute wait finished. Re-running the whole export cycle now...');
+          return await this.runCycleInternal(overrideOptions, true);
         }
       }
 
@@ -405,9 +524,9 @@ export class ExportOrchestrator {
         ? parseEmailList(overrideOptions.recipients)
         : parseEmailList(this.config.mail.recipients.to);
 
-      // Bug 8: Block sending if no valid, non-placeholder recipients
+      // Block sending if no valid, non-placeholder recipients
       const PLACEHOLDER_RE = /@(?:[a-zA-Z0-9-]+\.)*example\.(?:com|org|net)$/i;
-      const realRecipients = effectiveRecipients.filter(r => !PLACEHOLDER_RE.test(r));
+      const realRecipients = effectiveRecipients.filter((r) => !PLACEHOLDER_RE.test(r));
       if (realRecipients.length === 0) {
         const recipientError = effectiveRecipients.length === 0
           ? 'No To recipients configured. Please set a real email address in Settings.'
@@ -460,11 +579,6 @@ export class ExportOrchestrator {
       return summary;
     } finally {
       clearTimeout(cycleTimer);
-      this.isCycleRunning = false;
-      this.cycleStartTime = null;
-      this.currentCompany = '';
-      this.currentStep = 'idle';
-      this.cycleAbortController = null;
     }
   }
 
@@ -478,15 +592,16 @@ export class ExportOrchestrator {
     rep: string,
     exportFolder: string,
     overrideOptions?: CycleOverrideOptions,
-    signal?: AbortSignal
+    signal?: AbortSignal,
+    companyTimeoutOccurred: boolean = false
   ): Promise<CompanyExportResult> {
-    // TASK 3.b: Retry a timed-out company ONCE after a 10-second wait
+    // Retry a timed-out company ONCE after a 10-second wait
     const retryDelays = [10000];
     let lastError = '';
 
     for (let attempt = 0; attempt <= retryDelays.length; attempt++) {
       if (signal?.aborted) {
-        lastError = 'Timed out - Tally may be showing a dialog or is busy';
+        lastError = this.isCancelled ? 'Cycle cancelled by user' : 'Timed out - Tally may be busy';
         break;
       }
 
@@ -503,7 +618,7 @@ export class ExportOrchestrator {
         if (
           result.status === 'FAILED' &&
           result.error &&
-          /ECONNRESET|ECONNREFUSED|ETIMEDOUT|ECONNABORTED|timeout|socket hang up/i.test(result.error)
+          /ECONNRESET|ECONNREFUSED|ETIMEDOUT|ECONNABORTED|timeout|socket hang up|busy|not responding/i.test(result.error)
         ) {
           throw new Error(result.error);
         }
@@ -511,31 +626,31 @@ export class ExportOrchestrator {
       } catch (compErr: any) {
         lastError = compErr.message || 'Export failed';
         if (signal?.aborted || /ERR_CANCELED|CanceledError|canceled|aborted/i.test(lastError)) {
-          lastError = 'Timed out - Tally may be showing a dialog or is busy';
+          lastError = this.isCancelled ? 'Cycle cancelled by user' : 'Timed out - Tally may be busy';
           break;
         }
 
         const isConnOrTimeout =
           compErr.isTimeout ||
           compErr.name === 'TallyTimeoutError' ||
-          /ECONNRESET|ECONNREFUSED|ETIMEDOUT|ECONNABORTED|timeout|socket hang up/i.test(lastError);
+          /ECONNRESET|ECONNREFUSED|ETIMEDOUT|ECONNABORTED|timeout|socket hang up|busy|not responding/i.test(lastError);
 
-        if (isConnOrTimeout && attempt < retryDelays.length && !signal?.aborted) {
+        if (isConnOrTimeout && attempt < retryDelays.length && !signal?.aborted && !this.isCancelled) {
           const delayMs = retryDelays[attempt];
           logger.warn(
-            `[Retry ${attempt + 1}/${retryDelays.length}] Export for "${company}" timed out/failed (${lastError}). Waiting ${delayMs / 1000}s before single retry... (Hint: dismiss any popup in TallyPrime)`
+            `[Retry ${attempt + 1}/${retryDelays.length}] Export for "${company}" timed out/failed (${lastError}). Waiting ${delayMs / 1000}s before single retry...`
           );
 
           // Cancellable sleep
           const sleepStart = Date.now();
           while (Date.now() - sleepStart < delayMs) {
-            if (signal?.aborted) {
-              lastError = 'Timed out - Tally may be showing a dialog or is busy';
+            if (signal?.aborted || this.isCancelled) {
+              lastError = this.isCancelled ? 'Cycle cancelled by user' : 'Timed out - Tally may be busy';
               break;
             }
             await new Promise((resolve) => setTimeout(resolve, 200));
           }
-          if (signal?.aborted) break;
+          if (signal?.aborted || this.isCancelled) break;
         } else {
           break;
         }
@@ -543,8 +658,14 @@ export class ExportOrchestrator {
     }
 
     let formattedError = lastError;
-    if (signal?.aborted || /Timed out|timeout|ECONNRESET|ECONNREFUSED|ETIMEDOUT|ECONNABORTED/i.test(lastError)) {
-      formattedError = 'Timed out - Tally may be showing a dialog or is busy';
+    if (this.isCancelled) {
+      formattedError = 'Cycle cancelled by user';
+    } else if (
+      companyTimeoutOccurred ||
+      signal?.aborted ||
+      /Timed out|timeout|ECONNRESET|ECONNREFUSED|ETIMEDOUT|ECONNABORTED|busy|not responding/i.test(lastError)
+    ) {
+      formattedError = 'Timed out - Tally may be busy';
     }
 
     return {
@@ -571,10 +692,9 @@ export class ExportOrchestrator {
   ): Promise<CompanyExportResult> {
     const compState = this.stateManager.getCompanyState(companyName);
 
-    // Bug 1: Determine effective periodMode and dates.
-    // 1. If overrideOptions has fromDate/toDate, use them (overrides saved dates for this run only)
-    // 2. If overrideOptions explicitly sets periodMode (e.g. 'today'), respect it
-    // 3. If config has saved fromDate & toDate, export the range even if old periodMode was "today"
+    // Requirement 1: Scheduled runs (no overrideOptions) must use this.config.dayBook.periodMode (default 'today').
+    // Use saved fromDate/toDate only when periodMode === 'customRange'; otherwise export today's date (calculated at run time).
+    // Remove the branch that forces customRange just because fromDate/toDate are saved.
     let effectivePeriodMode: 'today' | 'sinceLastRun' | 'customRange';
     let fromDate = todayStr;
     let toDate = todayStr;
@@ -587,15 +707,18 @@ export class ExportOrchestrator {
     } else if (overrideOptions?.periodMode) {
       effectivePeriodMode = overrideOptions.periodMode;
       if (effectivePeriodMode === 'customRange') {
-        fromDate = overrideOptions.fromDate || this.config.dayBook.fromDate || todayStr;
-        toDate = overrideOptions.toDate || this.config.dayBook.toDate || todayStr;
+        fromDate = overrideOptions.fromDate || (this.config.dayBook.periodMode === 'customRange' ? this.config.dayBook.fromDate : undefined) || todayStr;
+        toDate = overrideOptions.toDate || (this.config.dayBook.periodMode === 'customRange' ? this.config.dayBook.toDate : undefined) || todayStr;
       }
-    } else if (this.config.dayBook.fromDate && this.config.dayBook.toDate) {
-      effectivePeriodMode = 'customRange';
-      fromDate = this.config.dayBook.fromDate;
-      toDate = this.config.dayBook.toDate;
     } else {
-      effectivePeriodMode = this.config.dayBook.periodMode;
+      effectivePeriodMode = this.config.dayBook.periodMode || 'today';
+      if (effectivePeriodMode === 'customRange') {
+        fromDate = this.config.dayBook.fromDate || todayStr;
+        toDate = this.config.dayBook.toDate || todayStr;
+      } else {
+        fromDate = todayStr;
+        toDate = todayStr;
+      }
     }
 
     if (effectivePeriodMode === 'sinceLastRun' && reportName === 'Day Book') {

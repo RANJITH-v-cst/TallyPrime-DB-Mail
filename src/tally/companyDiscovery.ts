@@ -140,8 +140,19 @@ export class CompanyDiscoveryService {
    * Fetches open companies from Tally and compares with configured companies.
    */
   public async discoverCompanies(configuredCompanies: string[] | 'auto', signal?: AbortSignal): Promise<CompanyDiscoveryResult> {
+    const startTime = Date.now();
+    logger.info(`[Tally:discovery] START`);
     const xml = this.buildDiscoveryXml();
-    const responseXml = await this.tallyClient.sendXml(xml, undefined, signal);
+    let responseXml = '';
+    try {
+      responseXml = await this.tallyClient.sendXml(xml, undefined, signal);
+      const duration = Date.now() - startTime;
+      logger.info(`[Tally:discovery] END (${duration}ms) - SUCCESS`);
+    } catch (err: any) {
+      const duration = Date.now() - startTime;
+      logger.error(`[Tally:discovery] END (${duration}ms) - FAILED: ${err.message}`);
+      throw err;
+    }
     const openCompanies = this.parseCompanyNames(responseXml);
 
     logger.info(`Discovered ${openCompanies.length} open company tabs in TallyPrime: [${openCompanies.join(', ')}]`);

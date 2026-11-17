@@ -87,7 +87,12 @@ export class AppScheduler {
 
       this.cronJob = cron.schedule(cronExpr, async () => {
         logger.info(`Executing scheduled daily export cycle at ${dailyTime} (${timeFormatted})...`);
-        await this.executeProtectedCycle('Daily Nightly Export');
+        const dailyOptions: CycleOverrideOptions = {
+          periodMode: 'today',
+          reportType: this.config.dayBook.reportType || 'Day Book',
+          recipients: this.config.mail.recipients.to,
+        };
+        await this.executeProtectedCycle('Daily Nightly Export', dailyOptions);
         this.calculateNextDailyRun(hour, minute);
       });
     } else {

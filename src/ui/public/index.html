@@ -338,9 +338,9 @@
               <div class="form-group">
                 <label>Exporter Method</label>
                 <select id="exporter-type">
+                  <option value="xmlRebuild">XML Rebuild (ExcelJS mimic - Recommended, Multi-Company Safe)</option>
                   <option value="auto">Auto (Native Excel with fallback to XML Rebuild)</option>
                   <option value="native">Native Only (Tally direct $$SysName:Excel)</option>
-                  <option value="xmlRebuild">XML Rebuild Only (ExcelJS mimic)</option>
                 </select>
               </div>
               <div class="form-group">
@@ -756,7 +756,7 @@
         const yyyymmddToInput = (s) => (s && /^\d{8}$/.test(s)) ? `${s.substring(0,4)}-${s.substring(4,6)}-${s.substring(6,8)}` : (s || '');
         document.getElementById('from-date').value = yyyymmddToInput(currentConfig.dayBook.fromDate);
         document.getElementById('to-date').value = yyyymmddToInput(currentConfig.dayBook.toDate);
-        document.getElementById('exporter-type').value = currentConfig.dayBook.exporter || 'auto';
+        document.getElementById('exporter-type').value = currentConfig.dayBook.exporter || 'xmlRebuild';
         document.getElementById('voucher-types').value = (currentConfig.dayBook.voucherTypes || []).join(', ');
         document.getElementById('detailed-flag').checked = !!currentConfig.dayBook.detailed;
         document.getElementById('skip-no-entries').checked = !!currentConfig.dayBook.skipIfNoEntries;

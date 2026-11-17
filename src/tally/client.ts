@@ -44,7 +44,10 @@ export class TallyClient {
    * Checks if TallyPrime is reachable using an isolated Company collection with FETCH.
    * Completely avoids Form:Company "No PARTS" UI errors.
    */
-  async ping(signal?: AbortSignal): Promise<boolean> {
+  async ping(signal?: AbortSignal, companyName?: string): Promise<boolean> {
+    const compLabel = companyName ? ` for "${companyName}"` : '';
+    const startTime = Date.now();
+    logger.info(`[Tally:ping] START${compLabel}`);
     try {
       const pingXml = `<ENVELOPE>
  <HEADER>
@@ -70,9 +73,12 @@ export class TallyClient {
  </BODY>
 </ENVELOPE>`;
       await this.sendXml(pingXml, 5000, signal);
+      const duration = Date.now() - startTime;
+      logger.info(`[Tally:ping] END${compLabel} (${duration}ms) - SUCCESS`);
       return true;
     } catch (err: any) {
-      logger.debug(`Tally ping failed: ${err.message}`);
+      const duration = Date.now() - startTime;
+      logger.warn(`[Tally:ping] END${compLabel} (${duration}ms) - FAILED: ${err.message}`);
       return false;
     }
   }

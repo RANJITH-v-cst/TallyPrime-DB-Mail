@@ -308,9 +308,13 @@ export class NativeExcelExporter implements IExporter {
     logger.info(
       `Requesting Native Excel Day Book from Tally for "${options.companyName}" (${options.fromDate} to ${options.toDate})...`
     );
+    const nativeReqStart = Date.now();
+    logger.info(`[Tally:native] START for "${options.companyName}"`);
 
     try {
       const buffer = await this.tallyClient.exportBinary(xml, undefined, options.signal);
+      const nativeReqDuration = Date.now() - nativeReqStart;
+      logger.info(`[Tally:native] END for "${options.companyName}" (${nativeReqDuration}ms)`);
 
       // Save raw debug response
       if (isDebugMode) {
@@ -391,7 +395,8 @@ export class NativeExcelExporter implements IExporter {
           : `Tally native Excel export timed out (no file appeared). Falling back to xmlRebuild.`,
       };
     } catch (err: any) {
-      logger.warn(`Native export HTTP request failed for "${options.companyName}": ${err.message}`);
+      const nativeReqDuration = Date.now() - nativeReqStart;
+      logger.warn(`[Tally:native] END for "${options.companyName}" (${nativeReqDuration}ms) - FAILED: ${err.message}`);
       return {
         success: false,
         voucherCount: 0,

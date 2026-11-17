@@ -6,13 +6,12 @@
   },
   "companies": "auto",
   "dayBook": {
+    "reportType": "Day Book",
     "periodMode": "today",
-    "fromDate": "20261112",
-    "toDate": "20261112",
     "voucherTypes": [],
     "detailed": true,
     "skipIfNoEntries": false,
-    "exporter": "auto"
+    "exporter": "xmlRebuild"
   },
   "schedule": {
     "intervalMinutes": 30,

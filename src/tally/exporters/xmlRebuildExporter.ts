@@ -463,35 +463,61 @@ export class XmlRebuildExporter implements IExporter {
       .replace(/^[`'"\s]+|[`'"\s]+$/g, '')
       .replace(/[^\w.-]/g, '_');
 
-    // 1. Fetch Day Book report XML
-    const reportXml = this.buildDayBookReportXml(options, style);
-    if (isDebugMode) {
-      if (!fs.existsSync(debugDir)) fs.mkdirSync(debugDir, { recursive: true });
-      fs.writeFileSync(path.join(debugDir, `${safeCompForFile}_report_request.xml`), reportXml, 'utf8');
-    }
-
-    const reportResponse = await this.tallyClient.sendXml(reportXml, undefined, options.signal);
-    if (isDebugMode) {
-      fs.writeFileSync(path.join(debugDir, `${safeCompForFile}_report_response.xml`), reportResponse, 'utf8');
-    }
-    this.logTallyError(reportResponse, ctx);
-    const reportVouchers = this.parseVouchers(reportResponse);
-    logger.info(`${ctx}: Day Book report returned ${reportVouchers.length} voucher(s), dates ${this.dateSpan(reportVouchers)}`);
-
-    // 2. Always run the collection query (Task A.2)
+    // 1. Always run the collection query first (safe direct TDL database query, never triggers Part:DB Body error on background companies)
     const collXml = this.buildVoucherFetchXml(options, style);
     if (isDebugMode) {
       if (!fs.existsSync(debugDir)) fs.mkdirSync(debugDir, { recursive: true });
       fs.writeFileSync(path.join(debugDir, `${safeCompForFile}_collection_request.xml`), collXml, 'utf8');
     }
 
-    const collResponse = await this.tallyClient.sendXml(collXml, undefined, options.signal);
+    const collStartTime = Date.now();
+    logger.info(`[Tally:voucherCollection] START for "${options.companyName}"`);
+    let collResponse = '';
+    try {
+      collResponse = await this.tallyClient.sendXml(collXml, undefined, options.signal);
+      const collDuration = Date.now() - collStartTime;
+      logger.info(`[Tally:voucherCollection] END for "${options.companyName}" (${collDuration}ms)`);
+    } catch (collErr: any) {
+      const collDuration = Date.now() - collStartTime;
+      logger.warn(`[Tally:voucherCollection] END for "${options.companyName}" (${collDuration}ms) - FAILED: ${collErr.message}`);
+      throw collErr;
+    }
     if (isDebugMode) {
       fs.writeFileSync(path.join(debugDir, `${safeCompForFile}_collection_response.xml`), collResponse, 'utf8');
     }
     this.logTallyError(collResponse, ctx);
     const collVouchers = this.parseVouchers(collResponse);
     logger.info(`${ctx}: voucher collection returned ${collVouchers.length} voucher(s), dates ${this.dateSpan(collVouchers)}`);
+
+    // If collection query returned vouchers in range, return immediately without touching fragile UI form reports
+    if (inRange(collVouchers)) {
+      return collVouchers;
+    }
+
+    // 2. Fallback: try Day Book report XML only if collection was empty, with safe error handling
+    let reportVouchers: VoucherEntry[] = [];
+    let repStartTime = Date.now();
+    try {
+      const reportXml = this.buildDayBookReportXml(options, style);
+      if (isDebugMode) {
+        fs.writeFileSync(path.join(debugDir, `${safeCompForFile}_report_request.xml`), reportXml, 'utf8');
+      }
+      repStartTime = Date.now();
+      logger.info(`[Tally:dayBookReport] START for "${options.companyName}"`);
+      const reportResponse = await this.tallyClient.sendXml(reportXml, 15000, options.signal);
+      const repDuration = Date.now() - repStartTime;
+      logger.info(`[Tally:dayBookReport] END for "${options.companyName}" (${repDuration}ms)`);
+      if (isDebugMode) {
+        fs.writeFileSync(path.join(debugDir, `${safeCompForFile}_report_response.xml`), reportResponse, 'utf8');
+      }
+      this.logTallyError(reportResponse, ctx);
+      reportVouchers = this.parseVouchers(reportResponse);
+      logger.info(`${ctx}: Day Book report returned ${reportVouchers.length} voucher(s), dates ${this.dateSpan(reportVouchers)}`);
+    } catch (repErr: any) {
+      const repDuration = Date.now() - repStartTime;
+      logger.warn(`[Tally:dayBookReport] END for "${options.companyName}" (${repDuration}ms) - FAILED: ${repErr.message}`);
+      logger.debug(`${ctx}: Day Book report query skipped/unsupported: ${repErr.message}`);
+    }
 
     // 3. Merge created fields into each voucher by MASTERID if available, else by key date|voucherType|voucherNumber
     if (reportVouchers.length > 0 && collVouchers.length > 0) {
@@ -524,9 +550,9 @@ export class XmlRebuildExporter implements IExporter {
       }
     }
 
-    if (inRange(reportVouchers)) return reportVouchers;
     if (inRange(collVouchers)) return collVouchers;
-    return reportVouchers.length > 0 ? reportVouchers : collVouchers;
+    if (inRange(reportVouchers)) return reportVouchers;
+    return collVouchers.length > 0 ? collVouchers : reportVouchers;
   }
 
   public isWithinRange(rawDate: string, fromDate: string, toDate: string): boolean {

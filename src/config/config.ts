@@ -12,7 +12,7 @@ export const DEFAULT_CONFIG: AppConfig = {
     host: '127.0.0.1',
     port: 9000,
     timeoutMs: 60000,
-    companyDeadlineMs: 120000,
+    companyDeadlineMs: 240000,
     cycleDeadlineMs: 900000,
   },
   companies: 'auto',
@@ -22,7 +22,7 @@ export const DEFAULT_CONFIG: AppConfig = {
     voucherTypes: [],
     detailed: true,
     skipIfNoEntries: false,
-    exporter: 'auto', // Default: auto (tries Tally native Excel first to include TDL columns, falls back to xmlRebuild)
+    exporter: 'xmlRebuild', // Default: xmlRebuild (pure TDL Collection + ExcelJS, 100% reliable for multi-company)
     tdlFilePath: undefined,
     tdlEnabled: false,
   },
