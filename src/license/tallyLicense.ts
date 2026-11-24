@@ -2,11 +2,14 @@ import { TallyClient } from '../tally/client';
 import { logger } from '../utils/logger';
 
 /**
- * The only TallyPrime licence this build is allowed to run against.
- * Per-customer: change this value (and rebuild) for each customer's Tally serial number.
+ * TallyPrime serial numbers this build is allowed to run against.
+ * Per-customer: edit this list (and rebuild) to add or remove a Tally serial number.
  * (TallyPrime > F1 Help > Licence Information > "Serial Number")
  */
-export const LICENSED_TALLY_SERIAL = '741042099';
+export const LICENSED_TALLY_SERIALS: string[] = ['741042099', '765248040'];
+
+/** First licensed serial (used by the mock Tally server and tests). */
+export const LICENSED_TALLY_SERIAL = LICENSED_TALLY_SERIALS[0];
 
 export type LicenseStatus = 'pending' | 'valid' | 'invalid' | 'unreachable';
 
@@ -78,7 +81,7 @@ export class TallyLicenseGuard {
 
   constructor(
     private getClient: () => TallyClient,
-    private expectedSerial: string = LICENSED_TALLY_SERIAL
+    private allowedSerials: string[] = LICENSED_TALLY_SERIALS
   ) {}
 
   public getState(): LicenseState {
@@ -128,7 +131,7 @@ export class TallyLicenseGuard {
       return this.getState();
     }
 
-    if (serial === this.expectedSerial.replace(/\s+/g, '')) {
+    if (this.allowedSerials.map((x) => x.replace(/\s+/g, '')).includes(serial)) {
       this.state = { status: 'valid', detectedSerial: serial, message: 'Licensed TallyPrime serial number verified.', checkedAt };
       logger.info(`[License] TallyPrime serial number ${serial} verified.`);
     } else {

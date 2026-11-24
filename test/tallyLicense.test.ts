@@ -3,6 +3,7 @@ import { TallyClient } from '../src/tally/client';
 import {
   TallyLicenseGuard,
   LICENSED_TALLY_SERIAL,
+  LICENSED_TALLY_SERIALS,
   parseSerialFromResponse,
 } from '../src/license/tallyLicense';
 import { startMockTallyServer, setMockSerialNumber } from '../src/mock/mockTallyServer';
@@ -42,6 +43,14 @@ describe('Tally licence serial number check', () => {
     expect((await guard.verify()).status).toBe('valid');
     expect(guard.isLicensed()).toBe(true);
     expect(requests).toBe(1);
+  });
+
+  test('every licensed serial number is accepted', async () => {
+    for (const serial of LICENSED_TALLY_SERIALS) {
+      setMockSerialNumber(serial);
+      expect((await makeGuard().verify()).status).toBe('valid');
+    }
+    expect(LICENSED_TALLY_SERIALS).toEqual(['741042099', '765248040']);
   });
 
   test('different serial is invalid and stays blocked without re-checking', async () => {
