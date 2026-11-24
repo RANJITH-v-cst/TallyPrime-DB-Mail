@@ -5,6 +5,7 @@ import { loadConfig } from '../config/config';
 import { parseEmailList } from '../utils/emailValidator';
 import { resolveAndEnsureFolder, saveFileWithLockProtection, cleanOldExports } from '../utils/folderHelper';
 import { TallyClient } from '../tally/client';
+import { TallyLicenseGuard, LicenseState } from '../license/tallyLicense';
 import { CompanyDiscoveryService } from '../tally/companyDiscovery';
 import { ExporterFactory } from '../tally/exporterFactory';
 import { StateManager } from './stateManager';
@@ -39,6 +40,7 @@ export class ExportOrchestrator {
   private discoveryService: CompanyDiscoveryService;
   private exporterFactory: ExporterFactory;
   private mailer: MailerService;
+  private licenseGuard: TallyLicenseGuard;
   private isCycleRunning: boolean = false;
   private cycleStartTime: number | null = null;
   private cycleAbortController: AbortController | null = null;
@@ -57,6 +59,18 @@ export class ExportOrchestrator {
     this.discoveryService = new CompanyDiscoveryService(this.tallyClient);
     this.exporterFactory = new ExporterFactory(this.tallyClient);
     this.mailer = new MailerService(config);
+    // The guard always uses the current client (it is replaced on config updates) and caches its result.
+    this.licenseGuard = new TallyLicenseGuard(() => this.tallyClient);
+  }
+
+  /** Current licence state (for the UI / status API). */
+  public getLicenseState(): LicenseState {
+    return this.licenseGuard.getState();
+  }
+
+  /** One-time licence check against the running TallyPrime, used when the application opens. */
+  public async verifyLicense(): Promise<LicenseState> {
+    return this.licenseGuard.verify();
   }
 
   public updateConfig(newConfig: AppConfig): void {
@@ -258,6 +272,14 @@ export class ExportOrchestrator {
       // Tally is up: clear any down alert state
       logger.info(`[Test Tally connection] Port ${this.config.tally.port} reachability check: ONLINE`);
       this.stateManager.clearTallyDownAlert();
+
+      // Licence gate: the TallyPrime serial number must match the licensed serial (checked once, then cached)
+      this.currentStep = 'Verifying licence...';
+      const license = await this.licenseGuard.verify(this.cycleAbortController.signal);
+      if (license.status !== 'valid') {
+        logger.error(`Export cycle blocked: ${license.message}`);
+        throw new Error(license.message);
+      }
 
       // Step 1: Discover open companies
       this.currentStep = 'Discovering open companies...';

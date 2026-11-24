@@ -1,5 +1,6 @@
 import http from 'http';
 import ExcelJS from 'exceljs';
+import { LICENSED_TALLY_SERIAL } from '../license/tallyLicense';
 
 const PORT = 9000;
 
@@ -22,6 +23,12 @@ export interface MockRecordedRequest {
 export const recordedRequests: MockRecordedRequest[] = [];
 export function clearRecordedRequests(): void {
   recordedRequests.length = 0;
+}
+
+let mockSerialNumber: string | null = LICENSED_TALLY_SERIAL;
+/** Serial number the mock TallyPrime reports (null = report nothing). */
+export function setMockSerialNumber(serial: string | null): void {
+  mockSerialNumber = serial;
 }
 
 let mockFailingCompany: string | null = null;
@@ -228,6 +235,12 @@ export function startMockTallyServer(port = PORT, mode: 'native' | 'fallback_xml
       });
 
       req.on('end', async () => {
+        // 0. Licence serial number request
+        if (body.includes('ADV License Report')) {
+          res.writeHead(200, { 'Content-Type': 'text/xml;charset=utf-8' });
+          return res.end(`<ENVELOPE><ADVLICSERIAL>${mockSerialNumber ?? ''}</ADVLICSERIAL></ENVELOPE>`);
+        }
+
         // 1. Step 1: Open Companies Collection
         if (body.includes('List of Companies') || body.includes('ADV Company Coll') || body.includes('<TYPE>Company</TYPE>')) {
           const companiesXml = `<?xml version="1.0" encoding="utf-8"?>
