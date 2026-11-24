@@ -86,57 +86,6 @@
     .alert-success { background: #ecfdf5; border: 1px solid #a7f3d0; color: #065f46; }
     .alert-danger { background: #fef2f2; border: 1px solid #fecaca; color: #991b1b; }
 
-    /* Supabase Auth Modal & User Header Styles */
-    .auth-overlay {
-      position: fixed;
-      top: 0; left: 0; right: 0; bottom: 0;
-      background: rgba(15, 23, 42, 0.85);
-      backdrop-filter: blur(8px);
-      display: flex;
-      align-items: center;
-      justify-content: center;
-      z-index: 9999;
-      padding: 16px;
-    }
-    .auth-card {
-      background: #ffffff;
-      border-radius: 12px;
-      width: 100%;
-      max-width: 420px;
-      box-shadow: 0 20px 25px -5px rgba(0, 0, 0, 0.3), 0 8px 10px -6px rgba(0, 0, 0, 0.2);
-      border: 1px solid #e2e8f0;
-      overflow: hidden;
-      animation: authCardIn 0.25s ease-out;
-    }
-    @keyframes authCardIn {
-      from { opacity: 0; transform: scale(0.96) translateY(-10px); }
-      to { opacity: 1; transform: scale(1) translateY(0); }
-    }
-    .auth-header {
-      background: linear-gradient(135deg, #1e40af 0%, #1e3a8a 100%);
-      color: white;
-      padding: 24px 20px;
-      text-align: center;
-    }
-    .auth-header h2 { font-size: 20px; font-weight: 700; margin-bottom: 4px; }
-    .auth-header p { font-size: 13px; opacity: 0.9; }
-    .auth-body { padding: 24px; }
-    .auth-alert { padding: 10px 14px; border-radius: 6px; font-size: 13px; margin-bottom: 16px; display: none; }
-    .auth-alert.error { background: #fef2f2; border: 1px solid #fecaca; color: #991b1b; display: block; }
-    .auth-alert.success { background: #ecfdf5; border: 1px solid #a7f3d0; color: #065f46; display: block; }
-    .auth-footer { text-align: center; margin-top: 16px; font-size: 12px; color: #64748b; }
-    .user-profile-badge {
-      display: inline-flex;
-      align-items: center;
-      gap: 6px;
-      background: #eff6ff;
-      border: 1px solid #bfdbfe;
-      padding: 4px 10px;
-      border-radius: 6px;
-      font-size: 12px;
-      color: #1e40af;
-      font-weight: 600;
-    }
   </style>
 </head>
 <body>
@@ -150,10 +99,6 @@
         </div>
       </div>
       <div class="header-actions" style="align-items: center;">
-        <div id="header-user-info" style="display: none; align-items: center; gap: 8px;">
-          <span class="user-profile-badge" id="header-user-email">👤 user@example.com</span>
-          <button class="btn-secondary" style="padding: 6px 12px; font-size: 12px;" onclick="handleSignOut()">🚪 Sign Out</button>
-        </div>
         <button class="btn-secondary" onclick="testTally()">Test Tally</button>
         <button class="btn-secondary" onclick="testMail()">Test Mail</button>
         <button class="btn-primary" id="btn-run-now" onclick="triggerQuickSend()">▶ Send Now</button>
@@ -161,6 +106,7 @@
     </header>
 
     <div id="alert-banner" class="status-alert"></div>
+    <div id="license-banner" class="status-alert alert-danger"></div>
 
     <div class="tabs">
       <button class="tab-btn active" onclick="switchTab('status')">Dashboard</button>
@@ -645,10 +591,6 @@
     async function fetchStatus() {
       try {
         const res = await fetch('/api/status');
-        if (res.status === 401) {
-          showAuthModal();
-          return;
-        }
         const data = await res.json();
         
         const badge = document.getElementById('engine-status');
@@ -673,6 +615,16 @@
           document.getElementById('next-run-time').innerText = isToday ? timeStr : `${timeStr} (Tomorrow)`;
         } else {
           document.getElementById('next-run-time').innerText = '--';
+        }
+
+        const licenseBanner = document.getElementById('license-banner');
+        if (licenseBanner) {
+          if (data.license && data.license.status === 'invalid') {
+            licenseBanner.style.display = 'block';
+            licenseBanner.innerHTML = `🔒 <strong>Not licensed:</strong> ${data.license.message}`;
+          } else {
+            licenseBanner.style.display = 'none';
+          }
         }
 
         const dispatchBanner = document.getElementById('email-dispatch-banner');
@@ -740,10 +692,6 @@
     async function fetchConfig() {
       try {
         const res = await fetch('/api/config');
-        if (res.status === 401) {
-          showAuthModal();
-          return;
-        }
         currentConfig = await res.json();
         
         document.getElementById('tally-host').value = currentConfig.tally.host;
@@ -1235,10 +1183,6 @@
     async function fetchLogs() {
       try {
         const res = await fetch('/api/logs');
-        if (res.status === 401) {
-          showAuthModal();
-          return;
-        }
         const data = await res.json();
         const box = document.getElementById('logs-container');
         box.innerText = (data.logs || []).join('\n');
@@ -1248,151 +1192,12 @@
       }
     }
 
-    // ==========================================
-    // Supabase Authentication Frontend Logic
-    // ==========================================
-    let currentUser = null;
-    let authPollingInterval = null;
-
-    function showAuthModal() {
-      const modal = document.getElementById('auth-modal');
-      if (modal) modal.style.display = 'flex';
-      const mainContainer = document.querySelector('.container');
-      if (mainContainer) mainContainer.style.filter = 'blur(3px)';
-      const headerUser = document.getElementById('header-user-info');
-      if (headerUser) headerUser.style.display = 'none';
-      if (authPollingInterval) {
-        clearInterval(authPollingInterval);
-        authPollingInterval = null;
-      }
-    }
-
-    function hideAuthModal() {
-      const modal = document.getElementById('auth-modal');
-      if (modal) modal.style.display = 'none';
-      const mainContainer = document.querySelector('.container');
-      if (mainContainer) mainContainer.style.filter = 'none';
-    }
-
-    function showAuthAlert(msg, isSuccess = false) {
-      const alertBox = document.getElementById('auth-alert');
-      if (!alertBox) return;
-      alertBox.className = isSuccess ? 'auth-alert success' : 'auth-alert error';
-      alertBox.innerText = msg;
-      alertBox.style.display = 'block';
-    }
-
-    async function checkAuthSession() {
-      try {
-        const res = await fetch('/api/auth/session');
-        const data = await res.json();
-        if (data.authenticated && data.user) {
-          currentUser = data.user;
-          onAuthSuccess(data.user);
-        } else {
-          showAuthModal();
-        }
-      } catch (err) {
-        showAuthModal();
-      }
-    }
-
-    function onAuthSuccess(user) {
-      hideAuthModal();
-      const headerUser = document.getElementById('header-user-info');
-      const emailEl = document.getElementById('header-user-email');
-      if (headerUser && emailEl) {
-        emailEl.innerText = `👤 ${user.email}`;
-        headerUser.style.display = 'inline-flex';
-      }
-
-      fetchConfig();
-      fetchStatus();
-      if (!authPollingInterval) {
-        authPollingInterval = setInterval(fetchStatus, 5000);
-      }
-    }
-
-    async function handleAuthLogin(e) {
-      if (e) e.preventDefault();
-      const email = document.getElementById('auth-login-email')?.value.trim();
-      const password = document.getElementById('auth-login-password')?.value;
-      const btn = document.getElementById('btn-auth-login-submit');
-
-      if (!email || !password) {
-        showAuthAlert('Please enter both email and password.');
-        return;
-      }
-
-      const origText = btn.innerText;
-      btn.innerText = 'Signing in...';
-      btn.disabled = true;
-
-      try {
-        const res = await fetch('/api/auth/login', {
-          method: 'POST',
-          headers: { 'Content-Type': 'application/json' },
-          body: JSON.stringify({ email, password }),
-        });
-        const data = await res.json();
-
-        if (data.success && data.user) {
-          showAuthAlert('Signed in successfully!', true);
-          setTimeout(() => {
-            onAuthSuccess(data.user);
-          }, 300);
-        } else {
-          showAuthAlert(data.error || 'Invalid email or password.');
-        }
-      } catch (err) {
-        showAuthAlert('Sign in failed: ' + err.message);
-      } finally {
-        btn.innerText = origText;
-        btn.disabled = false;
-      }
-    }
-
-    async function handleSignOut() {
-      if (!confirm('Are you sure you want to sign out?')) return;
-      try {
-        await fetch('/api/auth/logout', { method: 'POST' });
-      } catch {}
-      currentUser = null;
-      showAuthModal();
-    }
-
-    // Initialize Supabase Auth Session Verification
-    checkAuthSession();
+    // Start the dashboard (no sign-in required; licence is verified against TallyPrime by the backend)
+    fetchConfig();
+    fetchStatus();
+    setInterval(fetchStatus, 5000);
   </script>
 
-  <!-- SUPABASE AUTHENTICATION MODAL -->
-  <div id="auth-modal" class="auth-overlay" style="display: none;">
-    <div class="auth-card">
-      <div class="auth-header">
-        <div class="logo-badge" style="width: 44px; height: 44px; display: flex; align-items: center; justify-content: center; margin: 0 auto 10px; font-size: 18px; border-radius: 8px;">TP</div>
-        <h2>TallyDayBookMailer</h2>
-        <p>Supabase Account Login</p>
-      </div>
-      <div class="auth-body">
-        <div id="auth-alert" class="auth-alert"></div>
-
-        <!-- SIGN IN FORM -->
-        <form id="auth-form-signin" onsubmit="handleAuthLogin(event)">
-          <div class="form-group">
-            <label for="auth-login-email">Email Address</label>
-            <input type="email" id="auth-login-email" placeholder="name@company.com" required autocomplete="email" />
-          </div>
-          <div class="form-group">
-            <label for="auth-login-password">Password</label>
-            <input type="password" id="auth-login-password" placeholder="••••••••" required autocomplete="current-password" />
-          </div>
-          <button type="submit" id="btn-auth-login-submit" class="btn-primary" style="width: 100%; padding: 10px; margin-top: 10px; font-size: 14px;">
-            Sign In
-          </button>
-        </form>
-      </div>
-    </div>
-  </div>
 </body>
 </html>
 
