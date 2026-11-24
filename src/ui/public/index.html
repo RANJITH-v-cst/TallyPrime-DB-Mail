@@ -619,7 +619,7 @@
 
         const licenseBanner = document.getElementById('license-banner');
         if (licenseBanner) {
-          if (data.license && data.license.status === 'invalid') {
+          if (data.license && (data.license.status === 'invalid' || data.license.status === 'unreadable')) {
             licenseBanner.style.display = 'block';
             licenseBanner.innerHTML = `🔒 <strong>Not licensed:</strong> ${data.license.message}`;
           } else {
@@ -1047,7 +1047,13 @@
         const data = await res.json();
         if (data.success) {
           const folderStatus = data.exportFolder ? ` | Common Folder: ${data.exportFolder} (Writable: ${data.isFolderWritable ? 'YES' : 'NO'}${data.isFolderFallback ? ' - Fallback' : ''})` : '';
-          showAlert(`Tally Prime Connected! Found ${data.openCompanies.length} open tab(s): [${data.openCompanies.join(', ')}]${folderStatus}`, true);
+          const lic = data.license || {};
+          if (lic.status === 'valid') {
+            showAlert(`Tally Prime Connected! Licence OK (serial ${lic.detectedSerial}). Found ${data.openCompanies.length} open tab(s): [${data.openCompanies.join(', ')}]${folderStatus}`, true);
+          } else {
+            showAlert(`Tally Prime Connected, but NOT LICENSED: ${lic.message || 'licence could not be verified.'} Found ${data.openCompanies.length} open tab(s): [${data.openCompanies.join(', ')}]`, false);
+          }
+          fetchStatus();
         } else {
           const folderStatus = data.exportFolder ? ` | Folder: ${data.exportFolder} (Writable: ${data.isFolderWritable ? 'YES' : 'NO'})` : '';
           showAlert((data.error || 'Connection failed') + folderStatus, false);

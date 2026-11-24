@@ -68,6 +68,12 @@ export class ExportOrchestrator {
     return this.licenseGuard.getState();
   }
 
+  /** Forces a fresh licence check against the running TallyPrime (Test Tally button). */
+  public async recheckLicense(): Promise<LicenseState> {
+    this.licenseGuard.reset();
+    return this.licenseGuard.verify();
+  }
+
   /** One-time licence check against the running TallyPrime, used when the application opens. */
   public async verifyLicense(): Promise<LicenseState> {
     return this.licenseGuard.verify();

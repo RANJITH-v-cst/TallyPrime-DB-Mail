@@ -236,8 +236,13 @@ export function startMockTallyServer(port = PORT, mode: 'native' | 'fallback_xml
 
       req.on('end', async () => {
         // 0. Licence serial number request
-        if (body.includes('ADV License Report')) {
+        if (body.includes('ADV License ')) {
           res.writeHead(200, { 'Content-Type': 'text/xml;charset=utf-8' });
+          if (body.includes('ADV License Coll')) {
+            return res.end(
+              `<ENVELOPE><BODY><DATA><COLLECTION><COMPANY><ADVLICSERIAL TYPE="String">${mockSerialNumber ?? ''}</ADVLICSERIAL></COMPANY></COLLECTION></DATA></BODY></ENVELOPE>`
+            );
+          }
           return res.end(`<ENVELOPE><ADVLICSERIAL>${mockSerialNumber ?? ''}</ADVLICSERIAL></ENVELOPE>`);
         }
 

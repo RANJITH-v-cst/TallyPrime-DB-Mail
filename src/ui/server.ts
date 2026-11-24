@@ -242,8 +242,11 @@ export class WebUiServer {
         const discovery = this.orchestrator.getDiscoveryService();
         const result = await discovery.discoverCompanies(this.config.companies);
         const folderInfo = resolveAndEnsureFolder(this.config.exportFolder);
+        // Tally is reachable: also check its licence serial number (fresh check every time Test Tally is clicked)
+        const license = await this.orchestrator.recheckLicense();
         res.json({
           success: true,
+          license,
           openCompanies: result.openCompanies,
           missingCompanies: result.missingCompanies,
           configuredCompanies: result.configuredCompanies,

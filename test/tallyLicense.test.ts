@@ -35,6 +35,7 @@ describe('Tally licence serial number check', () => {
   test('parses the serial from a Tally response', () => {
     expect(parseSerialFromResponse('<ENVELOPE><ADVLICSERIAL> 741042099 </ADVLICSERIAL></ENVELOPE>')).toBe('741042099');
     expect(parseSerialFromResponse('<ENVELOPE></ENVELOPE>')).toBeNull();
+    expect(parseSerialFromResponse('<COMPANY><ADVLICSERIAL TYPE="String">765248040</ADVLICSERIAL></COMPANY>')).toBe('765248040');
   });
 
   test('matching serial is valid and is checked only once', async () => {
@@ -64,9 +65,22 @@ describe('Tally licence serial number check', () => {
     expect(guard.isLicensed()).toBe(false);
   });
 
-  test('missing serial is treated as invalid', async () => {
+  test('missing serial is unreadable (blocked, but re-checked next time)', async () => {
     setMockSerialNumber(null);
-    expect((await makeGuard().verify()).status).toBe('invalid');
+    const guard = makeGuard();
+    expect((await guard.verify()).status).toBe('unreadable');
+    expect(guard.isLicensed()).toBe(false);
+    setMockSerialNumber(LICENSED_TALLY_SERIAL);
+    expect((await guard.verify()).status).toBe('valid');
+  });
+
+  test('reset() forces a fresh check (Test Tally button)', async () => {
+    setMockSerialNumber('123456789');
+    const guard = makeGuard();
+    expect((await guard.verify()).status).toBe('invalid');
+    setMockSerialNumber(LICENSED_TALLY_SERIAL);
+    guard.reset();
+    expect((await guard.verify()).status).toBe('valid');
   });
 
   test('unreachable Tally is retried later and is not cached', async () => {
